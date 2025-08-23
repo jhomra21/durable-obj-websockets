@@ -1,0 +1,104 @@
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { getAuth } from '../auth'
+import type { Env, HonoVariables } from './types'
+import voiceApi from './voice'
+import videoApi from './video'
+import { ChatRoomDurableObject } from './chat'
+
+const app = new Hono<{ Bindings: Env; Variables: HonoVariables }>()
+
+app.use('/api/*', cors({
+  origin: (origin) => {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:4173',
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000',
+      'https://convex-workers-solid-tanstack-spa-betterauth-d1-kv.jhonra121.workers.dev', // Production domain
+    ];
+    if (!origin || allowedOrigins.includes(origin)) {
+      return origin || '*';
+    }
+    return null;
+  },
+  allowMethods: ['POST', 'GET', 'OPTIONS', 'PUT', 'DELETE', 'HEAD', 'PATCH'],
+}));
+
+// Middleware to get user session, must be defined before routes that need it.
+app.use('/api/*', async (c, next) => {
+  // We don't want to run this on the auth routes themselves.
+  if (c.req.path.startsWith('/api/auth')) {
+    return await next();
+  }
+
+  const auth = getAuth(c.env);
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+
+  if (!session) {
+    c.set("user", null);
+    c.set("session", null);
+  } else {
+    c.set('user', session.user);
+    c.set('session', session.session);
+  }
+  await next();
+});
+
+app.get('/api/', (c) => {
+  return c.json({
+    name: 'Hono + Cloudflare Workers',
+  });
+});
+
+app.all('/api/auth/*', (c) => {
+  return getAuth(c.env).handler(c.req.raw);
+});
+
+// Mount the voice API routes
+app.route('/api/voice', voiceApi);
+
+// Mount the video API routes
+app.route('/api/video', videoApi);
+
+// WebSocket chat route
+app.get('/api/chat', async (c) => {
+  // Check if user is authenticated
+  const user = c.get('user');
+  const session = c.get('session');
+
+  if (!user || !session) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  // Validate WebSocket upgrade request
+  const upgradeHeader = c.req.header('Upgrade');
+  if (upgradeHeader !== 'websocket') {
+    return c.json({ error: 'Expected websocket' }, 400);
+  }
+
+  // Get the chat room Durable Object (using a fixed ID for global chat room)
+  const chatRoomId = c.env.CHAT_ROOM.idFromName('global-chat');
+  const chatRoom = c.env.CHAT_ROOM.get(chatRoomId);
+
+  // Create a new request with user info in headers
+  const newRequest = new Request(c.req.raw.url, {
+    method: c.req.method,
+    headers: new Headers(c.req.raw.headers),
+  });
+
+  // Add user info to headers
+  newRequest.headers.set('X-User-Id', user.id);
+  newRequest.headers.set('X-User-Name', user.name || 'Anonymous');
+  newRequest.headers.set('X-User-Image', user.image || '');
+
+  // Forward the request to the Durable Object
+  return chatRoom.fetch(newRequest);
+});
+
+export default app;
+
+// Export Durable Object for Cloudflare Workers runtime
+export { ChatRoomDurableObject };
