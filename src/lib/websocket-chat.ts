@@ -1,5 +1,6 @@
-import { createEffect, onCleanup } from 'solid-js';
+import { createEffect, onCleanup, batch } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import { isValidWebSocketMessage, sanitizeMessageContent } from './chat-validation';
 import type { ChatMessage } from '../../api/chat';
 
 // WebSocket connection state
@@ -35,17 +36,23 @@ export function createWebSocketChat() {
 
   let ws: WebSocket | null = null;
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const connect = () => {
     if (ws?.readyState === WebSocket.OPEN || state.isConnecting) {
       return;
     }
 
-    setState('isConnecting', true);
-    setState('isReconnecting', state.connectionStatus === 'disconnected');
-    setState('connectionStatus', state.isReconnecting ? 'reconnecting' : 'connecting');
-    setState('error', null);
-    setState('reconnectAttempts', state.reconnectAttempts + (state.isReconnecting ? 1 : 0));
+    const isReconnecting = state.connectionStatus === 'disconnected';
+    
+    // Use batch for multiple related state updates
+    batch(() => {
+      setState('isConnecting', true);
+      setState('isReconnecting', isReconnecting);
+      setState('connectionStatus', isReconnecting ? 'reconnecting' : 'connecting');
+      setState('error', null);
+      setState('reconnectAttempts', state.reconnectAttempts + (isReconnecting ? 1 : 0));
+    });
 
     // Create WebSocket connection
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -54,14 +61,17 @@ export function createWebSocketChat() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      setState('isConnected', true);
-      setState('isConnecting', false);
-      setState('isReconnecting', false);
-      setState('connectionStatus', 'connected');
-      setState('connectionQuality', 'excellent');
-      setState('error', null);
-      setState('lastConnectedAt', Date.now());
-      setState('reconnectAttempts', 0);
+      // Use batch for multiple related state updates
+      batch(() => {
+        setState('isConnected', true);
+        setState('isConnecting', false);
+        setState('isReconnecting', false);
+        setState('connectionStatus', 'connected');
+        setState('connectionQuality', 'excellent');
+        setState('error', null);
+        setState('lastConnectedAt', Date.now());
+        setState('reconnectAttempts', 0);
+      });
       startHeartbeat();
     };
 
@@ -69,49 +79,92 @@ export function createWebSocketChat() {
       try {
         const data = JSON.parse(event.data);
 
-        if (data.type === 'message' && data.message) {
-          // Add new message
-          setState('messages', messages => [...messages, data.message]);
-        } else if (data.type === 'history' && data.messages) {
-          // Load message history
-          setState('messages', data.messages);
+        // Validate message structure
+        if (!isValidWebSocketMessage(data)) {
+          console.warn('Received invalid WebSocket message:', data);
+          return;
         }
+
+        // Use batch for multiple state updates
+        batch(() => {
+          if (data.type === 'message' && data.message) {
+            // Add new message with deduplication and limit management
+            setState('messages', messages => {
+              // Check if message already exists to prevent duplicates
+              const exists = messages.some(msg => msg.id === data.message.id);
+              if (exists) return messages;
+              
+              const newMessages = [...messages, data.message];
+              
+              // Keep only last 200 messages to prevent memory issues
+              const MAX_MESSAGES = 200;
+              return newMessages.length > MAX_MESSAGES 
+                ? newMessages.slice(-MAX_MESSAGES)
+                : newMessages;
+            });
+          } else if (data.type === 'history' && data.messages) {
+            // Load message history with validation
+            const validMessages = data.messages.filter((msg: any) => {
+              if (!msg || typeof msg !== 'object') return false;
+              return true; // Already validated by isValidWebSocketMessage
+            });
+            setState('messages', validMessages);
+          } else if (data.type === 'userCount' && typeof data.count === 'number') {
+            // Update user count
+            setState('userCount', Math.max(0, data.count));
+          }
+        });
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
+        setState('error', 'Failed to parse server message');
       }
     };
 
     ws.onclose = (event) => {
       stopHeartbeat();
-      setState('isConnected', false);
-      setState('isConnecting', false);
-      setState('connectionQuality', 'offline');
-      setState('lastDisconnectedAt', Date.now());
+      
+      // Use batch for multiple related state updates
+      batch(() => {
+        setState('isConnected', false);
+        setState('isConnecting', false);
+        setState('connectionQuality', 'offline');
+        setState('lastDisconnectedAt', Date.now());
 
-      if (event.code !== 1000) { // 1000 = normal closure
-        setState('connectionStatus', 'disconnected');
-        setState('error', `Connection lost: ${event.reason || 'Unknown reason'}`);
-
-        // Auto-reconnect for hibernation (code 1006) or other connection issues
-        if (event.code === 1006 || event.code === 1001) {
-          console.log('Connection lost, attempting to reconnect...');
-          setState('connectionStatus', 'reconnecting');
-          setTimeout(() => {
-            if (!state.isConnected && !state.isConnecting) {
-              connect();
-            }
-          }, 2000); // Wait 2 seconds before reconnecting
+        if (event.code !== 1000) { // 1000 = normal closure
+          setState('connectionStatus', 'disconnected');
+          setState('error', `Connection lost: ${event.reason || 'Unknown reason'}`);
+        } else {
+          setState('connectionStatus', 'disconnected');
         }
-      } else {
-        setState('connectionStatus', 'disconnected');
+      });
+
+      // Auto-reconnect for hibernation (code 1006) or other connection issues
+      if (event.code === 1006 || event.code === 1001) {
+        console.log('Connection lost, attempting to reconnect...');
+        setState('connectionStatus', 'reconnecting');
+        
+        // Clear any existing reconnect timeout
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+        }
+        
+        reconnectTimeout = setTimeout(() => {
+          if (!state.isConnected && !state.isConnecting) {
+            connect();
+          }
+          reconnectTimeout = null;
+        }, 2000); // Wait 2 seconds before reconnecting
       }
     };
 
     ws.onerror = (error) => {
-      setState('isConnecting', false);
-      setState('connectionStatus', 'error');
-      setState('connectionQuality', 'poor');
-      setState('error', 'WebSocket connection error');
+      // Use batch for multiple related state updates
+      batch(() => {
+        setState('isConnecting', false);
+        setState('connectionStatus', 'error');
+        setState('connectionQuality', 'poor');
+        setState('error', 'WebSocket connection error');
+      });
       console.error('WebSocket error:', error);
     };
   };
@@ -122,12 +175,16 @@ export function createWebSocketChat() {
       ws.close(1000, 'Client disconnect');
       ws = null;
     }
-    setState('isConnected', false);
-    setState('isConnecting', false);
-    setState('isReconnecting', false);
-    setState('connectionStatus', 'disconnected');
-    setState('connectionQuality', 'offline');
-    setState('lastDisconnectedAt', Date.now());
+    
+    // Use batch for multiple related state updates
+    batch(() => {
+      setState('isConnected', false);
+      setState('isConnecting', false);
+      setState('isReconnecting', false);
+      setState('connectionStatus', 'disconnected');
+      setState('connectionQuality', 'offline');
+      setState('lastDisconnectedAt', Date.now());
+    });
   };
 
   const startHeartbeat = () => {
@@ -169,10 +226,17 @@ export function createWebSocketChat() {
       return false;
     }
 
+    // Sanitize and validate content
+    const sanitizedContent = sanitizeMessageContent(content);
+    if (!sanitizedContent) {
+      setState('error', 'Message cannot be empty');
+      return false;
+    }
+
     try {
       ws.send(JSON.stringify({
         type: 'message',
-        content: content.trim()
+        content: sanitizedContent
       }));
       clearError();
       return true;
@@ -191,14 +255,23 @@ export function createWebSocketChat() {
     setState('messages', []);
   };
 
-  // Auto-connect effect
+  // Auto-connect effect - only connect when idle
   createEffect(() => {
-    connect();
+    if (state.connectionStatus === 'idle') {
+      connect();
+    }
   });
 
   // Cleanup effect
   onCleanup(() => {
     stopHeartbeat();
+    
+    // Clear reconnect timeout
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+    
     if (ws) {
       ws.close();
       ws = null;
