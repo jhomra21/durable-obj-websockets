@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, createMemo, onCleanup, onMount } from 'solid-js';
+import { createSignal, createEffect, For, Show, createMemo, onCleanup, onMount, type JSX } from 'solid-js';
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { createWebSocketChat, formatMessageTime, getMessageAuthor } from '~/lib/websocket-chat';
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
@@ -7,9 +7,10 @@ import { Input } from '~/components/ui/input';
 import { Avatar, AvatarImage, AvatarFallback } from '~/components/ui/avatar';
 import { Badge } from '~/components/ui/badge';
 
+
 export function Chat() {
   // Configuration
-  const disableVirtualization = false; // Enable virtualization with route transition fixes
+  const disableVirtualization = true; // Disable virtualization to fix spacing issues
 
   // Chat state and actions
   const {
@@ -30,7 +31,7 @@ export function Chat() {
   // Create virtualizer with proper dependency tracking (only if virtualization is enabled)
   const virtualizer = createMemo(() => {
     if (disableVirtualization) return null;
-    
+
     const messages = state.messages;
     const isReady = scrollAreaReady();
     const visible = isVisible();
@@ -70,7 +71,7 @@ export function Chat() {
           const targetIndex = messages.length - 1;
           if (targetIndex >= 0 && targetIndex < v.options.count) {
             try {
-              v.scrollToIndex(targetIndex, { 
+              v.scrollToIndex(targetIndex, {
                 align: 'end',
                 behavior: 'auto'
               });
@@ -95,12 +96,12 @@ export function Chat() {
     if (messages.length === 0) return;
 
     const v = !disableVirtualization ? virtualizer() : null;
-    
+
     if (v && !disableVirtualization) {
       try {
         const targetIndex = messages.length - 1;
         if (targetIndex >= 0 && targetIndex < v.options.count) {
-          v.scrollToIndex(targetIndex, { 
+          v.scrollToIndex(targetIndex, {
             align: 'end',
             behavior: 'auto'
           });
@@ -120,7 +121,7 @@ export function Chat() {
   createEffect(() => {
     const v = virtualizer();
     const messages = state.messages;
-    
+
     if (v && messages.length > 0 && scrollAreaRef && !hasInitialScrolled()) {
       requestAnimationFrame(() => {
         scrollToBottom();
@@ -133,7 +134,7 @@ export function Chat() {
     if (!disableVirtualization) {
       const messages = state.messages; // track messages for reactivity
       const v = virtualizer();
-      
+
       if (scrollAreaRef && v && messages.length > 0) {
         // Use a single requestAnimationFrame for better performance
         requestAnimationFrame(() => {
@@ -147,9 +148,9 @@ export function Chat() {
   onMount(() => {
     // Set visible immediately on mount
     setIsVisible(true);
-    
+
     let resizeObserver: ResizeObserver | undefined;
-    
+
     if (scrollAreaRef) {
       // Add resize observer to handle container size changes during route transitions
       resizeObserver = new ResizeObserver((entries) => {
@@ -394,7 +395,7 @@ export function Chat() {
                   if (el) {
                     setScrollAreaReady(true);
                     setIsVisible(true);
-                    
+
                     // Trigger initial scroll after a short delay to ensure everything is ready
                     setTimeout(() => {
                       if (!hasInitialScrolled()) {
@@ -434,18 +435,18 @@ export function Chat() {
                           .slice(0, 2);
                       }
                       return (
-                        <div 
-                          style={{ 
-                            height: `${v.getTotalSize()}px`, 
+                        <div
+                          style={{
+                            height: `${v.getTotalSize()}px`,
                             width: '100%',
-                            position: 'relative' 
-                          }}
+                            position: 'relative'
+                          } as JSX.CSSProperties}
                         >
                           <For each={items}>
                             {(virtualRow) => {
                               const message = state.messages[virtualRow.index];
                               if (!message) return null; // Guard against undefined messages
-                              
+
                               const isLatestMessage = latestMessageId() === message.id;
                               return (
                                 <div
@@ -457,7 +458,7 @@ export function Chat() {
                                     width: '100%',
                                     height: `${virtualRow.size}px`,
                                     transform: `translateY(${virtualRow.start}px)`
-                                  }}
+                                  } as JSX.CSSProperties}
                                   class={`flex gap-3 p-2 will-change-transform ${isLatestMessage
                                     ? 'animate-in fade-in slide-in-from-bottom-2 duration-300'
                                     : ''
@@ -507,12 +508,12 @@ export function Chat() {
                           .slice(0, 2);
                       }
                       return (
-                        <div class="space-y-3 py-2">
+                        <div class="py-2">
                           <For each={state.messages}>
                             {(message) => {
                               const isLatestMessage = latestMessageId() === message.id;
                               return (
-                                <div class={`flex gap-3 ${isLatestMessage
+                                <div class={`flex gap-3 p-2 ${isLatestMessage
                                   ? 'animate-in fade-in slide-in-from-bottom-2 duration-300'
                                   : ''}`}>
                                   <Avatar class="h-8 w-8 flex-shrink-0">
