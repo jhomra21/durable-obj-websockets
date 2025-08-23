@@ -44,7 +44,7 @@ export function createWebSocketChat() {
     }
 
     const isReconnecting = state.connectionStatus === 'disconnected';
-    
+
     // Use batch for multiple related state updates
     batch(() => {
       setState('isConnecting', true);
@@ -93,12 +93,12 @@ export function createWebSocketChat() {
               // Check if message already exists to prevent duplicates
               const exists = messages.some(msg => msg.id === data.message.id);
               if (exists) return messages;
-              
+
               const newMessages = [...messages, data.message];
-              
+
               // Keep only last 200 messages to prevent memory issues
               const MAX_MESSAGES = 200;
-              return newMessages.length > MAX_MESSAGES 
+              return newMessages.length > MAX_MESSAGES
                 ? newMessages.slice(-MAX_MESSAGES)
                 : newMessages;
             });
@@ -108,7 +108,10 @@ export function createWebSocketChat() {
               if (!msg || typeof msg !== 'object') return false;
               return true; // Already validated by isValidWebSocketMessage
             });
-            setState('messages', validMessages);
+
+            // Set messages and ensure they're sorted by timestamp (newest last)
+            const sortedMessages = validMessages.sort((a: { timestamp: number; }, b: { timestamp: number; }) => a.timestamp - b.timestamp);
+            setState('messages', sortedMessages);
           } else if (data.type === 'userCount' && typeof data.count === 'number') {
             // Update user count
             setState('userCount', Math.max(0, data.count));
@@ -122,7 +125,7 @@ export function createWebSocketChat() {
 
     ws.onclose = (event) => {
       stopHeartbeat();
-      
+
       // Use batch for multiple related state updates
       batch(() => {
         setState('isConnected', false);
@@ -132,7 +135,7 @@ export function createWebSocketChat() {
 
         if (event.code !== 1000) { // 1000 = normal closure
           setState('connectionStatus', 'disconnected');
-          setState('error', `Connection lost: ${event.reason || 'Unknown reason'}`);
+          setState('error', `Connection lost: ${event.reason || `Code ${event.code}`}`);
         } else {
           setState('connectionStatus', 'disconnected');
         }
@@ -142,12 +145,12 @@ export function createWebSocketChat() {
       if (event.code === 1006 || event.code === 1001) {
         console.log('Connection lost, attempting to reconnect...');
         setState('connectionStatus', 'reconnecting');
-        
+
         // Clear any existing reconnect timeout
         if (reconnectTimeout) {
           clearTimeout(reconnectTimeout);
         }
-        
+
         reconnectTimeout = setTimeout(() => {
           if (!state.isConnected && !state.isConnecting) {
             connect();
@@ -165,7 +168,6 @@ export function createWebSocketChat() {
         setState('connectionQuality', 'poor');
         setState('error', 'WebSocket connection error');
       });
-      console.error('WebSocket error:', error);
     };
   };
 
@@ -175,7 +177,7 @@ export function createWebSocketChat() {
       ws.close(1000, 'Client disconnect');
       ws = null;
     }
-    
+
     // Use batch for multiple related state updates
     batch(() => {
       setState('isConnected', false);
@@ -265,13 +267,13 @@ export function createWebSocketChat() {
   // Cleanup effect
   onCleanup(() => {
     stopHeartbeat();
-    
+
     // Clear reconnect timeout
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
     }
-    
+
     if (ws) {
       ws.close();
       ws = null;

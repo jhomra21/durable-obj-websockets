@@ -39,6 +39,45 @@ export class ChatRoomDurableObject implements DurableObject {
     this.messages = Array.from(list.values()).reverse();
   }
 
+  // NEW: Handle HTTP requests for message history
+  private async handleMessagesRequest(request: Request): Promise<Response> {
+    try {
+      // Get user info from headers for authentication
+      const userId = request.headers.get("X-User-Id");
+      const userName = request.headers.get("X-User-Name");
+
+      if (!userId || !userName) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Load messages from storage if not already loaded
+      if (this.messages.length === 0) {
+        await this.loadMessagesFromStorage();
+      }
+
+      // Return last 50 messages
+      const recentMessages = this.messages.slice(-50);
+      
+      return new Response(JSON.stringify(recentMessages), {
+        status: 200,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'private, max-age=0, must-revalidate'
+        }
+      });
+
+    } catch (error) {
+      console.error('Error handling messages request:', error);
+      return new Response(JSON.stringify({ error: 'Internal server error' }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
   constructor(state: DurableObjectState, env: ChatEnv) {
     this.state = state;
 
@@ -50,6 +89,13 @@ export class ChatRoomDurableObject implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    
+    // NEW: HTTP endpoint for message history only
+    if (url.pathname === '/messages') {
+      return this.handleMessagesRequest(request);
+    }
+
     // Handle WebSocket upgrade
     const upgradeHeader = request.headers.get("Upgrade");
     if (upgradeHeader !== "websocket") {
@@ -92,17 +138,8 @@ export class ChatRoomDurableObject implements DurableObject {
       userImage
     });
 
-    // Send recent messages to new connection (wait for storage if not loaded)
-    if (this.messages.length === 0) {
-      await this.loadMessagesFromStorage();
-    }
-    const recentMessages = this.messages.slice(-50); // Last 50 messages
-    if (recentMessages.length > 0) {
-      server.send(JSON.stringify({
-        type: 'history',
-        messages: recentMessages
-      }));
-    }
+    // NOTE: History is now fetched via HTTP endpoint for better caching
+    // No longer send history on WebSocket connection to reduce redundant requests
 
     // Broadcast user joined message
     this.broadcastMessage({

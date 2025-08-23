@@ -80,7 +80,7 @@ app.get('/api/chat', async (c) => {
   }
 
   // Get the chat room Durable Object (using a fixed ID for global chat room)
-  const chatRoomId = c.env.CHAT_ROOM.idFromName('global-chat');
+  const chatRoomId = c.env.CHAT_ROOM.idFromName('global');
   const chatRoom = c.env.CHAT_ROOM.get(chatRoomId);
 
   // Create a new request with user info in headers
@@ -93,6 +93,34 @@ app.get('/api/chat', async (c) => {
   newRequest.headers.set('X-User-Id', user.id);
   newRequest.headers.set('X-User-Name', user.name || 'Anonymous');
   newRequest.headers.set('X-User-Image', user.image || '');
+
+  // Forward the request to the Durable Object
+  return chatRoom.fetch(newRequest);
+});
+
+// HTTP chat messages route - for fetching message history
+app.get('/api/chat/messages', async (c) => {
+  // Check if user is authenticated
+  const user = c.get('user');
+  const session = c.get('session');
+
+  if (!user || !session) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  // Get the chat room Durable Object (using the same ID as WebSocket chat)
+  const chatRoomId = c.env.CHAT_ROOM.idFromName('global');
+  const chatRoom = c.env.CHAT_ROOM.get(chatRoomId);
+
+  // Create a new request for message history
+  const newRequest = new Request('http://internal/messages', {
+    method: 'GET',
+    headers: new Headers({
+      'X-User-Id': user.id,
+      'X-User-Name': user.name || 'Anonymous',
+      'X-User-Image': user.image || '',
+    }),
+  });
 
   // Forward the request to the Durable Object
   return chatRoom.fetch(newRequest);

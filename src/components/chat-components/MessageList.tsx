@@ -1,9 +1,8 @@
-import { For, Show } from 'solid-js';
+import { For, Show, createMemo, createEffect } from 'solid-js';
+import { createVirtualizer } from '@tanstack/solid-virtual';
 import { Card, CardContent } from '~/components/ui/card';
 import { Button } from '~/components/ui/button';
-import { Avatar, AvatarImage, AvatarFallback } from '~/components/ui/avatar';
-import { Badge } from '~/components/ui/badge';
-import { formatMessageTime, getMessageAuthor } from '~/lib/websocket-chat';
+import { MessageItem } from './MessageItem';
 import type { WebSocketState } from '~/lib/websocket-chat';
 
 interface MessageListProps {
@@ -12,19 +11,73 @@ interface MessageListProps {
   clearError: () => void;
   scrollAreaRef: (el: HTMLDivElement) => void;
   latestMessageId: () => string | null;
+  virtualizer?: (v: any) => void; // Callback to pass virtualizer to parent
 }
 
-// Helper function outside component to avoid recreation
-const getUserInitials = (name: string) => {
-  return name
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-};
-
 export function MessageList(props: MessageListProps) {
+  let scrollElementRef: HTMLDivElement | undefined;
+
+  // Create virtualizer for message list
+  const virtualizer = createVirtualizer({
+    count: props.state.messages.length,
+    getScrollElement: () => scrollElementRef || null,
+    estimateSize: () => 80, // Estimated height per message
+    overscan: 5, // Render 5 extra items outside viewport
+  });
+
+  // Initialize scroll area and pass virtualizer to parent
+  const initializeScrollArea = (el: HTMLDivElement) => {
+    scrollElementRef = el;
+    props.scrollAreaRef(el);
+    // Pass virtualizer to parent for scroll management
+    if (props.virtualizer) {
+      props.virtualizer(virtualizer);
+    }
+    // Force initial measurement after scroll element is set
+    requestAnimationFrame(() => {
+      if (scrollElementRef && scrollElementRef.clientHeight > 0) {
+        virtualizer.measure();
+      }
+    });
+  };
+
+  // Force virtualizer to measure when messages change
+  createEffect(() => {
+    const messageCount = props.state.messages.length;
+    if (messageCount > 0 && scrollElementRef && scrollElementRef.clientHeight > 0) {
+      // Use requestAnimationFrame to ensure DOM is updated
+      requestAnimationFrame(() => {
+        virtualizer.measure();
+      });
+    }
+  });
+
+  // Check if scroll container has dimensions
+  const hasScrollDimensions = () => {
+    return scrollElementRef && scrollElementRef.clientHeight > 0 && scrollElementRef.clientWidth > 0;
+  };
+
+  // Memoized virtual items for performance
+  const virtualItems = createMemo(() => {
+    // Only get virtual items if scroll container has dimensions
+    if (!hasScrollDimensions()) {
+      return [];
+    }
+    
+    const items = virtualizer.getVirtualItems();
+    if (import.meta.env.DEV) {
+      console.log('🔍 Virtual items:', {
+        totalSize: virtualizer.getTotalSize(),
+        itemCount: items.length,
+        messageCount: props.state.messages.length,
+        scrollElement: !!scrollElementRef,
+        scrollHeight: scrollElementRef?.clientHeight || 0,
+        scrollWidth: scrollElementRef?.clientWidth || 0
+      });
+    }
+    return items;
+  });
+
   const connectionStatusDetails = () => {
     switch (props.state.connectionStatus) {
       case 'idle':
@@ -49,7 +102,7 @@ export function MessageList(props: MessageListProps) {
       <Card class="h-full border-0 shadow-none">
         <CardContent class="p-0 h-full">
           <Show
-            when={!props.state.error || props.state.connectionStatus === 'connected'}
+            when={props.state.connectionStatus === 'connected' || props.state.messages.length > 0}
             fallback={
               <div class="flex items-center justify-center h-full text-muted-foreground animate-in fade-in duration-300">
                 <div class="text-center space-y-3">
@@ -71,13 +124,18 @@ export function MessageList(props: MessageListProps) {
                         </Button>
                       </Show>
                     </div>
+                    <Show when={props.state.error}>
+                      <div class="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded">
+                        Error: {props.state.error}
+                      </div>
+                    </Show>
                   </div>
                 </div>
               </div>
             }
           >
             <div
-              ref={props.scrollAreaRef}
+              ref={initializeScrollArea}
               class="px-4 overflow-y-auto h-full"
               data-chat-scroll-area
             >
@@ -93,45 +151,59 @@ export function MessageList(props: MessageListProps) {
                   </div>
                 }
               >
-                <div class="py-2">
-                  <For each={props.state.messages}>
-                    {(message) => {
-                      const isLatestMessage = props.latestMessageId() === message.id;
-                      return (
-                        <div class={`flex gap-3 p-3 ${isLatestMessage
-                          ? 'animate-in fade-in slide-in-from-bottom-2 duration-300'
-                          : ''}`}>
-                          <Avatar class="h-8 w-8 flex-shrink-0">
-                            <Show when={message.userImage}>
-                              <AvatarImage src={message.userImage} alt={getMessageAuthor(message)} />
-                            </Show>
-                            <AvatarFallback class="text-xs">
-                              {message.type === 'system' ? '🤖' : getUserInitials(getMessageAuthor(message))}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-1">
-                              <span class={`font-medium text-sm ${message.type === 'system' ? 'text-blue-600' : ''}`}>
-                                {message.type === 'system' ? '🤖 System' : getMessageAuthor(message)}
-                              </span>
-                              <span class="text-xs text-muted-foreground">
-                                {formatMessageTime(message.timestamp)}
-                              </span>
-                              <Show when={message.type === 'system'}>
-                                <Badge variant="secondary" class="text-xs">
-                                  System
-                                </Badge>
-                              </Show>
-                            </div>
-                            <p class={`text-sm break-words ${message.type === 'system' ? 'text-blue-700 bg-blue-50 p-2 rounded-md' : ''}`}>
-                              {message.content}
-                            </p>
+                <Show
+                  when={hasScrollDimensions() && virtualItems().length > 0}
+                  fallback={
+                    // Fallback: render messages without virtualization when container isn't ready
+                    <div class="space-y-1">
+                      <For each={props.state.messages}>
+                        {(message) => {
+                          const isLatestMessage = props.latestMessageId() === message?.id;
+                          return (
+                            <MessageItem 
+                              message={message} 
+                              isLatest={isLatestMessage}
+                            />
+                          );
+                        }}
+                      </For>
+                    </div>
+                  }
+                >
+                  {/* Virtualized rendering when container has dimensions */}
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: '100%',
+                      position: 'relative',
+                    } as any}
+                  >
+                    <For each={virtualItems()}>
+                      {(virtualItem) => {
+                        const message = props.state.messages[virtualItem.index];
+                        const isLatestMessage = props.latestMessageId() === message?.id;
+                        
+                        return (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: '0px',
+                              left: '0px',
+                              width: '100%',
+                              height: `${virtualItem.size}px`,
+                              transform: `translateY(${virtualItem.start}px)`,
+                            } as any}
+                          >
+                            <MessageItem 
+                              message={message} 
+                              isLatest={isLatestMessage}
+                            />
                           </div>
-                        </div>
-                      );
-                    }}
-                  </For>
-                </div>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </Show>
               </Show>
             </div>
           </Show>

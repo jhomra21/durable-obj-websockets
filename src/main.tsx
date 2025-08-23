@@ -34,6 +34,10 @@ const queryClient = new QueryClient({
 // Make queryClient globally accessible for session caching
 window.__QUERY_CLIENT = queryClient;
 
+// Initialize chat service with queryClient for global access
+import { initializeChatService } from './lib/chat-hooks';
+initializeChatService(queryClient);
+
 // Create router with the generated routeTree and provide context
 const router = createRouter({
   routeTree,
