@@ -1,5 +1,4 @@
-import { createSignal, createEffect, For, Show, createMemo, onCleanup, onMount, type JSX } from 'solid-js';
-import { createVirtualizer } from '@tanstack/solid-virtual';
+import { createSignal, createEffect, For, Show, createMemo, onCleanup, batch } from 'solid-js';
 import { createWebSocketChat, formatMessageTime, getMessageAuthor } from '~/lib/websocket-chat';
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card';
 import { Button } from '~/components/ui/button';
@@ -9,9 +8,6 @@ import { Badge } from '~/components/ui/badge';
 
 
 export function Chat() {
-  // Configuration
-  const disableVirtualization = true; // Disable virtualization to fix spacing issues
-
   // Chat state and actions
   const {
     state,
@@ -23,176 +19,79 @@ export function Chat() {
 
   // Signals and refs
   const [newMessage, setNewMessage] = createSignal('');
-  const [scrollAreaReady, setScrollAreaReady] = createSignal(false);
-  const [isVisible, setIsVisible] = createSignal(false);
   const [hasInitialScrolled, setHasInitialScrolled] = createSignal(false);
   let scrollAreaRef: HTMLDivElement | undefined;
 
-  // Create virtualizer with proper dependency tracking (only if virtualization is enabled)
-  const virtualizer = createMemo(() => {
-    if (disableVirtualization) return null;
-
+  // Stable message tracking to prevent unnecessary re-renders
+  const messageCount = createMemo(() => state.messages.length);
+  const latestMessageId = createMemo(() => {
     const messages = state.messages;
-    const isReady = scrollAreaReady();
-    const visible = isVisible();
-
-    // Only create virtualizer when we have both the ref, messages, and component is visible
-    if (!isReady || !scrollAreaRef || messages.length === 0 || !visible) return null;
-
-    // Check if scroll element has proper dimensions
-    const rect = scrollAreaRef.getBoundingClientRect();
-    if (rect.height === 0 || rect.width === 0) return null;
-
-    return createVirtualizer({
-      count: messages.length,
-      getScrollElement: () => scrollAreaRef ?? null,
-      estimateSize: () => 80,
-      overscan: 5,
-      getItemKey: (index: number) => state.messages[index]?.id || `message-${index}`,
-      // Add scroll margin for better positioning
-      scrollMargin: 0,
-      // Enable smooth scrolling behavior
-      scrollPaddingStart: 0,
-      scrollPaddingEnd: 0,
-    });
+    return messages.length > 0 ? messages[messages.length - 1]?.id : null;
   });
 
-  // Auto-scroll to bottom when new messages arrive (but not on initial load)
-  createEffect(() => {
-    const messages = state.messages;
-    const v = !disableVirtualization ? virtualizer() : null;
-    const hasScrolled = hasInitialScrolled();
-
-    // Only auto-scroll for new messages after initial scroll is done
-    if (messages.length > 0 && scrollAreaRef && hasScrolled) {
-      requestAnimationFrame(() => {
-        if (v && !disableVirtualization && messages.length > 0) {
-          // Ensure the virtualizer is properly initialized and measured
-          const targetIndex = messages.length - 1;
-          if (targetIndex >= 0 && targetIndex < v.options.count) {
-            try {
-              v.scrollToIndex(targetIndex, {
-                align: 'end',
-                behavior: 'auto'
-              });
-            } catch (error) {
-              console.warn('Virtualizer scroll failed, falling back to DOM scroll:', error);
-              scrollAreaRef!.scrollTop = scrollAreaRef!.scrollHeight;
-            }
-          }
-        } else {
-          // Use regular scroll when virtualization is disabled
-          scrollAreaRef!.scrollTop = scrollAreaRef!.scrollHeight;
-        }
-      });
-    }
-  });
-
-  // Handle initial scroll to bottom - this runs once when component is ready
+  // Simple scroll-to-bottom function
   const scrollToBottom = () => {
-    if (!scrollAreaRef || hasInitialScrolled()) return;
-
-    const messages = state.messages;
-    if (messages.length === 0) return;
-
-    const v = !disableVirtualization ? virtualizer() : null;
-
-    if (v && !disableVirtualization) {
-      try {
-        const targetIndex = messages.length - 1;
-        if (targetIndex >= 0 && targetIndex < v.options.count) {
-          v.scrollToIndex(targetIndex, {
-            align: 'end',
-            behavior: 'auto'
-          });
-          setHasInitialScrolled(true);
-        }
-      } catch (error) {
-        scrollAreaRef.scrollTop = scrollAreaRef.scrollHeight;
-        setHasInitialScrolled(true);
-      }
-    } else {
-      scrollAreaRef.scrollTop = scrollAreaRef.scrollHeight;
-      setHasInitialScrolled(true);
-    }
+    if (!scrollAreaRef) return;
+    scrollAreaRef.scrollTop = scrollAreaRef.scrollHeight;
   };
 
-  // Trigger scroll when virtualizer becomes available
+  // Handle initial scroll - runs once when messages are first available
   createEffect(() => {
-    const v = virtualizer();
-    const messages = state.messages;
+    const count = messageCount();
 
-    if (v && messages.length > 0 && scrollAreaRef && !hasInitialScrolled()) {
+    if (count > 0 && scrollAreaRef && !hasInitialScrolled()) {
+      batch(() => {
+        setHasInitialScrolled(true);
+      });
+
+      // Scroll after DOM is ready
       requestAnimationFrame(() => {
         scrollToBottom();
       });
     }
   });
 
-  // Force virtualizer measurement when messages change (only if virtualization is enabled)
+  // Handle auto-scroll for new messages (after initial scroll)
   createEffect(() => {
-    if (!disableVirtualization) {
-      const messages = state.messages; // track messages for reactivity
-      const v = virtualizer();
+    const count = messageCount();
+    const hasScrolled = hasInitialScrolled();
 
-      if (scrollAreaRef && v && messages.length > 0) {
-        // Use a single requestAnimationFrame for better performance
-        requestAnimationFrame(() => {
-          v.measure();
-        });
-      }
+    if (count > 0 && scrollAreaRef && hasScrolled) {
+      // Scroll to bottom for new messages
+      const timeoutId = setTimeout(() => {
+        scrollToBottom();
+      }, 16);
+
+      onCleanup(() => clearTimeout(timeoutId));
     }
   });
 
-  // Handle component visibility and remeasurement after route transitions
-  onMount(() => {
-    // Set visible immediately on mount
-    setIsVisible(true);
+  // Initialize scroll area
+  const initializeScrollArea = (el: HTMLDivElement) => {
+    scrollAreaRef = el;
+  };
 
-    let resizeObserver: ResizeObserver | undefined;
-
-    if (scrollAreaRef) {
-      // Add resize observer to handle container size changes during route transitions
-      resizeObserver = new ResizeObserver((entries) => {
-        const entry = entries[0];
-        if (entry && entry.contentRect.height > 0 && entry.contentRect.width > 0) {
-          // Container has been resized and has dimensions - trigger initial scroll
-          if (!hasInitialScrolled()) {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                scrollToBottom();
-              });
-            });
-          }
-        }
-      });
-      resizeObserver.observe(scrollAreaRef);
-    }
-
-    // Cleanup observers
-    onCleanup(() => {
-      resizeObserver?.disconnect();
-    });
-  });
-
-  // Cleanup when component is unmounted to prevent stale references
+  // Cleanup when component is unmounted
   onCleanup(() => {
     scrollAreaRef = undefined;
-    setScrollAreaReady(false);
+    setHasInitialScrolled(false);
   });
 
 
 
-  // Handle sending message
-
+  // Handle sending message with optimized state updates
   const handleSendMessage = (e: Event) => {
     e.preventDefault();
     e.stopPropagation();
 
     const content = newMessage().trim();
     if (content && sendMessage(content)) {
-      setNewMessage('');
-      // Prevent form reset flash - refocus input after brief delay
+      // Use batch to prevent multiple reactive updates
+      batch(() => {
+        setNewMessage('');
+      });
+
+      // Refocus input after brief delay
       setTimeout(() => {
         const input = (e.currentTarget as HTMLFormElement)?.querySelector('input') as HTMLInputElement;
         if (input && document.activeElement !== input) {
@@ -238,11 +137,7 @@ export function Chat() {
   });
 
 
-  // Track if a new message was just added for animation purposes
-  const latestMessageId = createMemo(() => {
-    const messages = state.messages;
-    return messages.length > 0 ? messages[messages.length - 1].id : null;
-  });
+
 
   // Connection quality bars component
   const ConnectionQualityBars = (props: { bars: number; color: string }) => {
@@ -389,21 +284,7 @@ export function Chat() {
               }
             >
               <div
-                ref={(el) => {
-                  scrollAreaRef = el;
-                  // Signal that the scroll area is ready
-                  if (el) {
-                    setScrollAreaReady(true);
-                    setIsVisible(true);
-
-                    // Trigger initial scroll after a short delay to ensure everything is ready
-                    setTimeout(() => {
-                      if (!hasInitialScrolled()) {
-                        scrollToBottom();
-                      }
-                    }, 50);
-                  }
-                }}
+                ref={initializeScrollArea}
                 class="px-4 overflow-y-auto h-full"
                 data-chat-scroll-area
               >
@@ -421,134 +302,57 @@ export function Chat() {
                   }
                 >
                   {(() => {
-                    const v = disableVirtualization ? null : virtualizer();
-                    if (v && !disableVirtualization) {
-                      // Use virtualized rendering
-                      const items = v.getVirtualItems();
-                      // Helper for avatar fallback
-                      function getUserInitials(name: string) {
-                        return name
-                          .split(' ')
-                          .map(n => n[0])
-                          .join('')
-                          .toUpperCase()
-                          .slice(0, 2);
-                      }
-                      return (
-                        <div
-                          style={{
-                            height: `${v.getTotalSize()}px`,
-                            width: '100%',
-                            position: 'relative'
-                          } as JSX.CSSProperties}
-                        >
-                          <For each={items}>
-                            {(virtualRow) => {
-                              const message = state.messages[virtualRow.index];
-                              if (!message) return null; // Guard against undefined messages
-
-                              const isLatestMessage = latestMessageId() === message.id;
-                              return (
-                                <div
-                                  data-index={virtualRow.index}
-                                  style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: `${virtualRow.size}px`,
-                                    transform: `translateY(${virtualRow.start}px)`
-                                  } as JSX.CSSProperties}
-                                  class={`flex gap-3 p-2 will-change-transform ${isLatestMessage
-                                    ? 'animate-in fade-in slide-in-from-bottom-2 duration-300'
-                                    : ''
-                                    }`}
-                                >
-                                  <Avatar class="h-8 w-8 flex-shrink-0">
-                                    <Show when={message.userImage}>
-                                      <AvatarImage src={message.userImage} alt={getMessageAuthor(message)} />
-                                    </Show>
-                                    <AvatarFallback class="text-xs">
-                                      {message.type === 'system' ? '🤖' : getUserInitials(getMessageAuthor(message))}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 mb-1">
-                                      <span class={`font-medium text-sm ${message.type === 'system' ? 'text-blue-600' : ''}`}>
-                                        {message.type === 'system' ? '🤖 System' : getMessageAuthor(message)}
-                                      </span>
-                                      <span class="text-xs text-muted-foreground">
-                                        {formatMessageTime(message.timestamp)}
-                                      </span>
-                                      <Show when={message.type === 'system'}>
-                                        <Badge variant="secondary" class="text-xs">
-                                          System
-                                        </Badge>
-                                      </Show>
-                                    </div>
-                                    <p class={`text-sm break-words ${message.type === 'system' ? 'text-blue-700 bg-blue-50 p-2 rounded-md' : ''}`}>
-                                      {message.content}
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            }}
-                          </For>
-                        </div>
-                      );
-                    } else {
-                      // Use simple rendering as fallback
-                      // Helper for avatar fallback
-                      function getUserInitials(name: string) {
-                        return name
-                          .split(' ')
-                          .map(n => n[0])
-                          .join('')
-                          .toUpperCase()
-                          .slice(0, 2);
-                      }
-                      return (
-                        <div class="py-2">
-                          <For each={state.messages}>
-                            {(message) => {
-                              const isLatestMessage = latestMessageId() === message.id;
-                              return (
-                                <div class={`flex gap-3 p-2 ${isLatestMessage
-                                  ? 'animate-in fade-in slide-in-from-bottom-2 duration-300'
-                                  : ''}`}>
-                                  <Avatar class="h-8 w-8 flex-shrink-0">
-                                    <Show when={message.userImage}>
-                                      <AvatarImage src={message.userImage} alt={getMessageAuthor(message)} />
-                                    </Show>
-                                    <AvatarFallback class="text-xs">
-                                      {message.type === 'system' ? '🤖' : getUserInitials(getMessageAuthor(message))}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 mb-1">
-                                      <span class={`font-medium text-sm ${message.type === 'system' ? 'text-blue-600' : ''}`}>
-                                        {message.type === 'system' ? '🤖 System' : getMessageAuthor(message)}
-                                      </span>
-                                      <span class="text-xs text-muted-foreground">
-                                        {formatMessageTime(message.timestamp)}
-                                      </span>
-                                      <Show when={message.type === 'system'}>
-                                        <Badge variant="secondary" class="text-xs">
-                                          System
-                                        </Badge>
-                                      </Show>
-                                    </div>
-                                    <p class={`text-sm break-words ${message.type === 'system' ? 'text-blue-700 bg-blue-50 p-2 rounded-md' : ''}`}>
-                                      {message.content}
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            }}
-                          </For>
-                        </div>
-                      );
+                    // Helper for avatar fallback
+                    function getUserInitials(name: string) {
+                      return name
+                        .split(' ')
+                        .map(n => n[0])
+                        .join('')
+                        .toUpperCase()
+                        .slice(0, 2);
                     }
+
+                    return (
+                      <div class="py-2">
+                        <For each={state.messages}>
+                          {(message) => {
+                            const isLatestMessage = latestMessageId() === message.id;
+                            return (
+                              <div class={`flex gap-3 p-3 ${isLatestMessage
+                                ? 'animate-in fade-in slide-in-from-bottom-2 duration-300'
+                                : ''}`}>
+                                <Avatar class="h-8 w-8 flex-shrink-0">
+                                  <Show when={message.userImage}>
+                                    <AvatarImage src={message.userImage} alt={getMessageAuthor(message)} />
+                                  </Show>
+                                  <AvatarFallback class="text-xs">
+                                    {message.type === 'system' ? '🤖' : getUserInitials(getMessageAuthor(message))}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div class="flex-1 min-w-0">
+                                  <div class="flex items-center gap-2 mb-1">
+                                    <span class={`font-medium text-sm ${message.type === 'system' ? 'text-blue-600' : ''}`}>
+                                      {message.type === 'system' ? '🤖 System' : getMessageAuthor(message)}
+                                    </span>
+                                    <span class="text-xs text-muted-foreground">
+                                      {formatMessageTime(message.timestamp)}
+                                    </span>
+                                    <Show when={message.type === 'system'}>
+                                      <Badge variant="secondary" class="text-xs">
+                                        System
+                                      </Badge>
+                                    </Show>
+                                  </div>
+                                  <p class={`text-sm break-words ${message.type === 'system' ? 'text-blue-700 bg-blue-50 p-2 rounded-md' : ''}`}>
+                                    {message.content}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          }}
+                        </For>
+                      </div>
+                    );
                   })()}
 
                 </Show>

@@ -1,5 +1,5 @@
 {
-  "name": "cloudflare-workers-solid-tanstack-spa-betterauth-d1-kv",
+  "name": "durable-obj-websockets",
   "private": true,
   "type": "module",
   "scripts": {
