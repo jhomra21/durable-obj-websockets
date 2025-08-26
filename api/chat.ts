@@ -25,16 +25,24 @@ export interface ChatEnv extends Env {
   CHAT_ROOM: DurableObjectNamespace;
 }
 
+// Storage key prefixes
+const MESSAGE_PREFIX = 'm:';   // user messages
+const SYSTEM_PREFIX = 'sys:';  // system messages (join/leave)
+
 export class ChatRoomDurableObject implements DurableObject {
   private state: DurableObjectState;
   private connections: Map<string, WebSocketInfo> = new Map();
   private messages: ChatMessage[] = [];
   private maxMessages = 100; // Keep last 100 messages
+  private rateLimiter = new Map<string, { count: number; windowStart: number }>();
+  private cooldownUntil = new Map<string, number>();
+  private readonly RATE_WINDOW_MS = 10_000; // 10s window
+  private readonly RATE_MAX_MSGS = 20;      // max messages per window
 
   // Load messages from storage on startup
   private async loadMessagesFromStorage() {
-    // List last maxMessages from storage (keys are ISO timestamps)
-    const list = await this.state.storage.list<ChatMessage>({ reverse: true, limit: this.maxMessages });
+    // List last maxMessages from storage under message prefix (keys are zero-padded timestamps)
+    const list = await this.state.storage.list<ChatMessage>({ prefix: MESSAGE_PREFIX, reverse: true, limit: this.maxMessages });
     // Reverse to chronological order
     this.messages = Array.from(list.values()).reverse();
   }
@@ -81,11 +89,22 @@ export class ChatRoomDurableObject implements DurableObject {
   constructor(state: DurableObjectState, env: ChatEnv) {
     this.state = state;
 
-    // Restore connections after hibernation
-    this.restoreConnections();
+    // Gate initialization to avoid races on cold start
+    this.state.blockConcurrencyWhile(async () => {
+      // Restore connections after hibernation
+      this.restoreConnections();
 
-    // Load messages from storage (async, fire and forget)
-    this.loadMessagesFromStorage();
+      // Load messages from storage
+      await this.loadMessagesFromStorage();
+
+      // Configure ping/pong auto-response (hibernation-friendly)
+      this.state.setWebSocketAutoResponse(
+        new WebSocketRequestResponsePair(
+          JSON.stringify({ type: 'ping' }),
+          JSON.stringify({ type: 'pong' })
+        )
+      );
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -130,6 +149,9 @@ export class ChatRoomDurableObject implements DurableObject {
 
     this.connections.set(connectionId, wsInfo);
 
+    // Track and broadcast connection count
+    this.broadcastUserCount();
+
     // Serialize connection info for hibernation
     server.serializeAttachment({
       connectionId,
@@ -150,6 +172,23 @@ export class ChatRoomDurableObject implements DurableObject {
       timestamp: Date.now(),
       type: 'system'
     });
+
+    // Persist system join message under separate prefix (kept out of default history)
+    try {
+      const sysMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        userId: 'system',
+        userName: 'System',
+        content: `${userName} joined the chat`,
+        timestamp: Date.now(),
+        type: 'system'
+      };
+      const key = SYSTEM_PREFIX + sysMsg.timestamp.toString().padStart(20, '0');
+      await this.state.storage.put(key, sysMsg);
+      await this.schedulePrune();
+    } catch (e) {
+      console.error('Error persisting system join message:', e);
+    }
 
     return new Response(null, {
       status: 101,
@@ -188,13 +227,43 @@ export class ChatRoomDurableObject implements DurableObject {
       if (typeof msg === 'string') {
         const data = JSON.parse(msg);
 
-        if (data.type === 'message' && data.content) {
+        if (data.type === 'message') {
+          const now = Date.now();
+          const until = this.cooldownUntil.get(connectionId) ?? 0;
+          if (until && now < until) {
+            // In cooldown window: ignore user messages
+            return;
+          }
+          // Per-connection rate limit
+          let rl = this.rateLimiter.get(connectionId) ?? { count: 0, windowStart: now };
+          if (now - rl.windowStart > this.RATE_WINDOW_MS) {
+            rl = { count: 0, windowStart: now };
+          }
+          rl.count++;
+          this.rateLimiter.set(connectionId, rl);
+          if (rl.count > this.RATE_MAX_MSGS) {
+            const retryAfterMs = Math.max(0, this.RATE_WINDOW_MS - (now - rl.windowStart));
+            this.cooldownUntil.set(connectionId, now + retryAfterMs);
+            try {
+              ws.send(JSON.stringify({ type: 'rateLimit', retryAfterMs, limit: this.RATE_MAX_MSGS, windowMs: this.RATE_WINDOW_MS }));
+            } catch {}
+            return;
+          }
+          // Basic server-side validation
+          if (typeof data.content !== 'string') return;
+          const content = data.content.trim();
+          if (!content) return;
+          const MAX = 2000;
+          if (content.length > MAX) {
+            try { ws.close(1009, 'message too large'); } catch {}
+            return;
+          }
           const chatMessage: ChatMessage = {
             id: crypto.randomUUID(),
             userId: wsInfo.userId,
             userName: wsInfo.userName,
             userImage: wsInfo.userImage,
-            content: data.content,
+            content,
             timestamp: Date.now(),
             type: 'text'
           };
@@ -205,16 +274,11 @@ export class ChatRoomDurableObject implements DurableObject {
           if (this.messages.length > this.maxMessages) {
             this.messages = this.messages.slice(-this.maxMessages);
           }
-          // Persist message to storage (key: ISO timestamp)
-          await this.state.storage.put(chatMessage.timestamp.toString().padStart(20, '0'), chatMessage);
-          // Optionally, prune old messages from storage
-          const list = await this.state.storage.list({ reverse: true, limit: this.maxMessages });
-          const keysToKeep = new Set(Array.from(list.keys()));
-          const allKeys = await this.state.storage.list();
-          const keysToDelete = Array.from(allKeys.keys()).filter(k => !keysToKeep.has(k));
-          if (keysToDelete.length > 0) {
-            await this.state.storage.delete(keysToDelete);
-          }
+          // Persist message to storage with prefix (key: zero-padded timestamp)
+          const key = MESSAGE_PREFIX + chatMessage.timestamp.toString().padStart(20, '0');
+          await this.state.storage.put(key, chatMessage);
+          // Schedule background pruning via alarm (hibernation-friendly)
+          await this.schedulePrune();
           // Broadcast to all connections
           this.broadcastMessage(chatMessage);
         } else if (data.type === 'ping') {
@@ -242,6 +306,11 @@ export class ChatRoomDurableObject implements DurableObject {
 
       // Remove connection
       this.connections.delete(connectionId);
+      this.rateLimiter.delete(connectionId);
+      this.cooldownUntil.delete(connectionId);
+
+      // Broadcast updated user count
+      this.broadcastUserCount();
 
       if (wsInfo) {
         // Broadcast user left message
@@ -253,6 +322,23 @@ export class ChatRoomDurableObject implements DurableObject {
           timestamp: Date.now(),
           type: 'system'
         });
+
+        // Persist system leave message under separate prefix
+        try {
+          const sysMsg: ChatMessage = {
+            id: crypto.randomUUID(),
+            userId: 'system',
+            userName: 'System',
+            content: `${wsInfo.userName} left the chat`,
+            timestamp: Date.now(),
+            type: 'system'
+          };
+          const key = SYSTEM_PREFIX + sysMsg.timestamp.toString().padStart(20, '0');
+          await this.state.storage.put(key, sysMsg);
+          await this.schedulePrune();
+        } catch (e) {
+          console.error('Error persisting system leave message:', e);
+        }
       }
     } catch (error) {
       console.error('Error handling WebSocket close:', error);
@@ -268,9 +354,56 @@ export class ChatRoomDurableObject implements DurableObject {
       if (attachment) {
         const { connectionId } = attachment;
         this.connections.delete(connectionId);
+        this.rateLimiter.delete(connectionId);
+        this.cooldownUntil.delete(connectionId);
       }
     } catch (e) {
       console.error('Error cleaning up WebSocket connection:', e);
+    }
+  }
+
+  // Alarm scheduling and pruning
+  private async schedulePrune() {
+    // Schedule prune in ~5 minutes. Repeated calls are cheap; latest schedule wins.
+    await this.state.storage.setAlarm(Date.now() + 5 * 60 * 1000);
+  }
+
+  // Called by the platform when alarm fires
+  async alarm() {
+    try {
+      await this.pruneByPrefix(MESSAGE_PREFIX, this.maxMessages);
+      await this.pruneByPrefix(SYSTEM_PREFIX, this.maxMessages);
+    } catch (e) {
+      console.error('Error during alarm prune:', e);
+    } finally {
+      // Reschedule next prune to keep storage lean over time
+      await this.schedulePrune();
+    }
+  }
+
+  private async pruneByPrefix(prefix: string, limit: number) {
+    // Keep only the newest `limit` items under the given prefix
+    const latest = await this.state.storage.list({ prefix, reverse: true, limit });
+    const keep = new Set<string>(Array.from(latest.keys()));
+    const all = await this.state.storage.list({ prefix });
+    const toDelete: string[] = [];
+    for (const k of all.keys()) {
+      if (!keep.has(k)) toDelete.push(k);
+    }
+    if (toDelete.length) {
+      await this.state.storage.delete(toDelete);
+    }
+  }
+
+  private broadcastUserCount() {
+    const payload = JSON.stringify({ type: 'userCount', count: this.connections.size });
+    for (const [id, info] of this.connections) {
+      try {
+        if (info.ws.readyState === WebSocket.OPEN) info.ws.send(payload);
+      } catch {
+        // Drop broken connection silently
+        this.connections.delete(id);
+      }
     }
   }
 

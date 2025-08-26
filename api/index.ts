@@ -68,7 +68,7 @@ app.get('/api/chat', async (c) => {
   // Validate WebSocket upgrade request
   const upgradeHeader = c.req.header('Upgrade');
   if (upgradeHeader !== 'websocket') {
-    return c.json({ error: 'Expected websocket' }, 400);
+    return c.json({ error: 'Expected websocket' }, 426);
   }
 
   // Get the chat room Durable Object (using a fixed ID for global chat room)

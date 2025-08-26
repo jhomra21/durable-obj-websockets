@@ -1,4 +1,5 @@
-import { Show, batch } from 'solid-js';
+import { Show, batch, createSignal, createEffect, onCleanup } from 'solid-js';
+
 import { Card, CardContent } from '~/components/ui/card';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
@@ -12,6 +13,35 @@ interface MessageInputProps {
 }
 
 export function MessageInput(props: MessageInputProps) {
+  // Local ticking clock to update cooldown countdown while active
+  const [now, setNow] = createSignal(Date.now());
+  let timer: ReturnType<typeof setInterval> | null = null;
+
+  const cooldownUntil = () => props.state.sendCooldownUntil ?? null;
+  const remainingMs = () => {
+    const until = cooldownUntil();
+    if (!until) return 0;
+    return Math.max(0, until - now());
+  };
+  const cooldownActive = () => remainingMs() > 0;
+  const remainingSeconds = () => Math.ceil(remainingMs() / 1000);
+
+  createEffect(() => {
+    const until = cooldownUntil();
+    const active = until && until > Date.now();
+    if (active && !timer) {
+      setNow(Date.now());
+      timer = setInterval(() => setNow(Date.now()), 1000);
+    } else if (!active && timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  });
+
+  onCleanup(() => {
+    if (timer) clearInterval(timer);
+  });
+
   const handleSendMessage = (e: Event) => {
     e.preventDefault();
     e.stopPropagation();
@@ -43,12 +73,13 @@ export function MessageInput(props: MessageInputProps) {
                 value={props.newMessage()}
                 onChange={props.setNewMessage}
                 placeholder={
-                  !props.state.isConnected ? "🔌 Connect to start chatting..." :
+                  cooldownActive() ? `⏳ Wait ${remainingSeconds()}s (rate limit)` :
+                  (!props.state.isConnected ? "🔌 Connect to start chatting..." :
                     props.state.isReconnecting ? "🔄 Reconnecting..." :
                       props.state.connectionQuality === 'poor' ? "📶 Signal weak - Type a message..." :
-                        "💬 Type a message..."
+                        "💬 Type a message...")
                 }
-                disabled={!props.state.isConnected || props.state.isConnecting || props.state.isReconnecting}
+                disabled={!props.state.isConnected || props.state.isConnecting || props.state.isReconnecting || cooldownActive()}
                 class={`flex-1 transition-all duration-200 chat-input ${
                   props.state.connectionQuality === 'poor' ? 'border-orange-300 focus:border-orange-400' :
                     props.state.connectionQuality === 'excellent' ? 'border-green-300 focus:border-green-400' :
@@ -63,16 +94,20 @@ export function MessageInput(props: MessageInputProps) {
             </div>
             <Button
               type="submit"
-              disabled={!props.state.isConnected || !props.newMessage().trim() || props.state.isConnecting || props.state.isReconnecting}
+              disabled={!props.state.isConnected || !props.newMessage().trim() || props.state.isConnecting || props.state.isReconnecting || cooldownActive()}
               size="sm"
               class={`transition-all duration-200 min-w-[70px] ${
-                props.state.isReconnecting ? 'animate-pulse bg-orange-500 hover:bg-orange-600' :
+                props.state.isReconnecting ? 'animate-pulse bg-orange-500 hover:bg-orange-600' : cooldownActive() ? 'opacity-60 cursor-not-allowed' :
                   !props.state.isConnected ? 'opacity-50' :
                     props.state.connectionQuality === 'excellent' ? 'bg-green-600 hover:bg-green-700' :
                       ''
               }`}
             >
-              <Show when={props.state.isReconnecting} fallback="📤 Send">
+              <Show when={props.state.isReconnecting} fallback={
+                <Show when={cooldownActive()} fallback="📤 Send">
+                  <span>⏳ {remainingSeconds()}s</span>
+                </Show>
+              }>
                 <span class="animate-spin">🔄</span>
               </Show>
             </Button>
@@ -83,6 +118,9 @@ export function MessageInput(props: MessageInputProps) {
             <div class="flex items-center gap-4">
               <Show when={props.newMessage().length > 0}>
                 <span>{props.newMessage().length} characters</span>
+              </Show>
+              <Show when={cooldownActive()}>
+                <span class="text-blue-600">⏳ Cooldown: {remainingSeconds()}s</span>
               </Show>
               <Show when={props.state.isConnected && props.state.connectionQuality === 'excellent'}>
                 <span class="text-green-600">✨ Strong connection</span>

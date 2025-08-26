@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onCleanup, getOwner } from 'solid-js';
+import { createSignal, createEffect, onCleanup } from 'solid-js';
 import { useQueryClient } from '@tanstack/solid-query';
 import { ChatService, type WebSocketConnectionState } from './chat-service';
 import { useChatMessages, useChatMutations } from './chat-queries';
@@ -84,6 +84,7 @@ export function useChat() {
     isConnecting: () => connectionState().isConnecting,
     connectionError: () => connectionState().error,
     userCount: () => connectionState().userCount,
+    sendCooldownUntil: () => connectionState().sendCooldownUntil ?? null,
     
     // Actions
     sendMessage,

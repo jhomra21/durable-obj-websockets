@@ -25,6 +25,12 @@ export function isValidWebSocketMessage(data: any): boolean {
       return Array.isArray(data.messages) && data.messages.every(isValidChatMessage);
     case 'userCount':
       return typeof data.count === 'number' && data.count >= 0;
+    case 'rateLimit':
+      return (
+        typeof data.retryAfterMs === 'number' && data.retryAfterMs >= 0 &&
+        typeof data.limit === 'number' && data.limit > 0 &&
+        typeof data.windowMs === 'number' && data.windowMs > 0
+      );
     case 'pong':
       return true;
     default:
@@ -36,6 +42,6 @@ export function isValidWebSocketMessage(data: any): boolean {
 export function sanitizeMessageContent(content: string): string {
   return content
     .trim()
-    .slice(0, 1000) // Limit message length
+    .slice(0, 2000) // Limit message length (matches server limit)
     .replace(/[<>]/g, ''); // Basic XSS prevention
 }

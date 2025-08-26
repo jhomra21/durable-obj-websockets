@@ -16,6 +16,8 @@ export interface WebSocketState {
   messages: ChatMessage[];
   userCount: number;
   connectionStatus: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
+  // When set and in the future, sending is disabled until this epoch ms
+  sendCooldownUntil?: number | null;
 }
 
 // WebSocket chat hook
@@ -161,6 +163,7 @@ export function createWebSocketChat() {
     };
 
     ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
       // Use batch for multiple related state updates
       batch(() => {
         setState('isConnecting', false);

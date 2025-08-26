@@ -15,6 +15,8 @@ export interface WebSocketConnectionState {
   lastDisconnectedAt: number | null;
   reconnectAttempts: number;
   userCount: number;
+  // Optional: when present and in the future, sending is disabled until this timestamp (ms)
+  sendCooldownUntil?: number | null;
 }
 
 /**
@@ -36,6 +38,8 @@ export class ChatService {
   private connection: WebSocket | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private sendCooldownUntil: number | null = null;
+  private cooldownTimer: ReturnType<typeof setInterval> | null = null;
   
   // Connection state (reactive via subscribers)
   private state: WebSocketConnectionState = {
@@ -177,11 +181,23 @@ export class ChatService {
    * Send a message via WebSocket
    */
   sendMessage(content: string): boolean {
+    // Respect server-provided cooldown window
+    const now = Date.now();
+    if (this.sendCooldownUntil && now < this.sendCooldownUntil) {
+      const seconds = Math.ceil((this.sendCooldownUntil - now) / 1000);
+      this.updateState({ error: `You're sending too fast. Try again in ${seconds}s.` });
+      return false;
+    }
+    if (this.sendCooldownUntil && now >= this.sendCooldownUntil) {
+      this.sendCooldownUntil = null;
+      this.updateState({ sendCooldownUntil: null, error: null });
+    }
+
     if (!this.connection || this.connection.readyState !== WebSocket.OPEN) {
       this.updateState({
         error: 'Not connected to chat. Attempting to reconnect...'
       });
-      
+
       // Try to reconnect
       if (!this.state.isConnecting && !this.state.isConnected) {
         this.connect();
@@ -234,6 +250,20 @@ export class ChatService {
       reconnectAttempts: 0,
     });
 
+    // Clear any client-side cooldown on a fresh (re)connect
+    this.clearCooldownTimer();
+    this.sendCooldownUntil = null;
+    this.updateState({ sendCooldownUntil: null, error: null });
+
+    // Ensure recent history is refreshed after (re)connect
+    if (this.queryClient) {
+      try {
+        this.queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] });
+      } catch (err) {
+        console.warn('ChatService: failed to invalidate messages on open', err);
+      }
+    }
+
     this.startHeartbeat();
   }
 
@@ -261,6 +291,12 @@ export class ChatService {
         this.handleNewMessage(data.message);
       } else if (data.type === 'userCount' && typeof data.count === 'number') {
         this.updateState({ userCount: Math.max(0, data.count) });
+      } else if (data.type === 'rateLimit' && typeof data.retryAfterMs === 'number') {
+        const retry = Math.max(0, data.retryAfterMs);
+        this.sendCooldownUntil = Date.now() + retry;
+        const seconds = Math.ceil(retry / 1000);
+        this.updateState({ error: `You're sending too fast. Try again in ${seconds}s.`, sendCooldownUntil: this.sendCooldownUntil });
+        this.startCooldownTimer();
       } else if (data.type === 'pong') {
         // Heartbeat response - connection is healthy
         this.updateState({ connectionQuality: 'excellent' });
@@ -305,6 +341,7 @@ export class ChatService {
     console.log('🔌 ChatService: WebSocket closed:', event.code, event.reason);
     
     this.stopHeartbeat();
+    this.clearCooldownTimer();
 
     this.updateState({
       isConnected: false,
@@ -315,9 +352,16 @@ export class ChatService {
 
     // Auto-reconnect for unexpected closures
     if (event.code !== 1000) { // 1000 = normal closure
+      let friendly = `Connection lost: ${event.reason || `Code ${event.code}`}`;
+      if (event.code === 1008) {
+        friendly = 'You are sending messages too fast (rate limited). Please wait and try again.';
+      } else if (event.code === 1009) {
+        friendly = 'Message too large. Maximum allowed is 2000 characters.';
+      }
+
       this.updateState({
         status: 'disconnected',
-        error: `Connection lost: ${event.reason || `Code ${event.code}`}`
+        error: friendly
       });
 
       // Reconnect with exponential backoff
@@ -330,7 +374,42 @@ export class ChatService {
         }
       }, delay);
     } else {
-      this.updateState({ status: 'disconnected' });
+      this.updateState({ status: 'disconnected', error: null });
+    }
+  }
+
+  /**
+   * Start a 1s ticker to update the error countdown and clear on expiry
+   */
+  private startCooldownTimer(): void {
+    // Clear any existing timer
+    this.clearCooldownTimer();
+    if (!this.sendCooldownUntil) return;
+
+    this.cooldownTimer = setInterval(() => {
+      if (!this.sendCooldownUntil) {
+        this.clearCooldownTimer();
+        return;
+      }
+      const remaining = this.sendCooldownUntil - Date.now();
+      if (remaining <= 0) {
+        this.sendCooldownUntil = null;
+        this.updateState({ error: null, sendCooldownUntil: null });
+        this.clearCooldownTimer();
+        return;
+      }
+      const seconds = Math.ceil(remaining / 1000);
+      this.updateState({ error: `You're sending too fast. Try again in ${seconds}s.`, sendCooldownUntil: this.sendCooldownUntil });
+    }, 1000);
+  }
+
+  /**
+   * Clear cooldown timer if present
+   */
+  private clearCooldownTimer(): void {
+    if (this.cooldownTimer) {
+      clearInterval(this.cooldownTimer);
+      this.cooldownTimer = null;
     }
   }
 

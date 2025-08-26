@@ -30,16 +30,6 @@ export function Chat() {
     useChatPerformance();
   }
 
-  // Test function to send a test message
-  const sendTestMessage = () => {
-    if (chat.isConnected()) {
-      chat.sendMessage('Test message from optimized client');
-    } else {
-      console.log('Not connected, attempting to connect...');
-      chat.connect();
-    }
-  };
-
   // Create a compatible state object for existing components
   const compatibleState = createMemo(() => ({
     messages: messages(),
@@ -48,6 +38,7 @@ export function Chat() {
     isConnecting: chat.isConnecting(),
     error: chat.connectionError() || (chat.messagesError ? String(chat.messagesError) : null),
     userCount: chat.userCount(),
+    sendCooldownUntil: chat.sendCooldownUntil ? chat.sendCooldownUntil() : null,
     // Loading states
     isLoadingMessages: chat.isLoadingMessages,
     // Connection quality derived from connection state
@@ -66,33 +57,6 @@ export function Chat() {
         disconnect={chat.disconnect}
         clearError={chat.clearError}
       />
-
-      {/* Debug panel for development - now shows optimization info */}
-      {import.meta.env.DEV && (
-        <div class="bg-green-50 border border-green-200 p-2 text-xs">
-          <div class="flex gap-2 items-center flex-wrap">
-            <span class="font-semibold text-green-700">Optimized Chat:</span>
-            <button 
-              onClick={sendTestMessage}
-              class="px-2 py-1 bg-blue-500 text-white rounded text-xs"
-            >
-              Test Connection
-            </button>
-            <span>Status: {chat.connectionState.status}</span>
-            <span>Messages: {messageCount()}</span>
-            <span class="text-blue-600">
-              Cache: {chat.messages() ? '✓ Hit' : '⟳ Loading'}
-            </span>
-            <span class="text-purple-600">
-              WS: {chat.isConnected() ? '🟢 Connected' : '🔴 Disconnected'}
-            </span>
-            {compatibleState().error && 
-              <span class="text-red-600">Error: {compatibleState().error}</span>
-            }
-          </div>
-        </div>
-      )}
-
       <MessageList
         state={compatibleState()}
         connect={chat.connect}
