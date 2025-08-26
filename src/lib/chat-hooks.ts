@@ -24,9 +24,10 @@ export function useChat() {
   const messagesQuery = useChatMessages();
   const chatMutations = useChatMutations();
 
-  // Force refetch on mount to ensure we get historical messages
+  // Only force refetch on initial mount if no messages loaded
   createEffect(() => {
-    if (messagesQuery.isSuccess && messagesQuery.data && messagesQuery.data.length <= 1) {
+    if (messagesQuery.isSuccess && messagesQuery.data && messagesQuery.data.length === 0) {
+      // Only refetch if we have absolutely no messages (not even system messages)
       messagesQuery.refetch();
     }
   });

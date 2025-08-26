@@ -31,7 +31,7 @@ const getUserInitials = (name: string) => {
 export function MessageItem(props: MessageItemProps) {
   return (
     <div class={`flex gap-3 p-3 ${props.isLatest
-      ? 'animate-in fade-in slide-in-from-bottom-2 duration-300'
+      ? 'animate-in fade-in ease-out'
       : ''}`}>
       <Avatar class="h-8 w-8 flex-shrink-0">
         <Show when={props.message.userImage}>

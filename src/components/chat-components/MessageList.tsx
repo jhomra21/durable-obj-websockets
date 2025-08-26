@@ -18,12 +18,13 @@ export function MessageList(props: MessageListProps) {
   let scrollElementRef: HTMLDivElement | undefined;
 
   // Create virtualizer for message list
+  // Cast to any to allow passing accessors for reactive updates in Solid
   const virtualizer = createVirtualizer({
-    count: props.state.messages.length,
+    count: () => props.state.messages.length,
     getScrollElement: () => scrollElementRef || null,
     estimateSize: () => 80, // Estimated height per message
     overscan: 5, // Render 5 extra items outside viewport
-  });
+  } as any);
 
   // Initialize scroll area and pass virtualizer to parent
   const initializeScrollArea = (el: HTMLDivElement) => {

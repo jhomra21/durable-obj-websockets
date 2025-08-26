@@ -1,24 +1,28 @@
-[![Convex Client Test](https://github.com/jhomra21/convex-cloudflare-workers-solid-tanstack-spa-betterauth-D1-KV/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/jhomra21/convex-cloudflare-workers-solid-tanstack-spa-betterauth-D1-KV/actions/workflows/test.yml)
 
-# Generative AI Canvas
 
-An open-source, collaborative canvas for generative AI, powered by Cloudflare Workers, SolidJS, and Convex. This application provides a seamless, interactive environment to create, edit, and chain together AI-generated media.
+# Durable Objects Chat (SolidJS + TanStack)
 
-> [!NOTE]
-> 🚀 **Live Demo:** Check out the deployed application here: **[convex-workers-solid-tanstack-spa-betterauth-d1-kv.jhonra121.workers.dev](https://convex-workers-solid-tanstack-spa-betterauth-d1-kv.jhonra121.workers.dev/)**
+Real-time chat powered by Cloudflare Workers Durable Objects (WebSockets) and a SolidJS frontend. Uses TanStack Router/Query, Tailwind, and Solid-UI components. OAuth via better-auth with D1 + KV.
 
 ## 🌟 Core Features
 
--   **🤖 Agentic Chat UI**: Use natural language to drive the canvas. The chat agent understands your intent to create and connect other agents for media generation.
--   **🖼️ Image Generation & Editing**: Create new images from text prompts or edit existing ones. Connect image agents to build complex visual workflows.
--   **🎬 Video Generation**: Generate video clips from text prompts or animate existing images on the canvas.
--   **🎤 Voice Generation (TTS)**: Produce high-quality speech from text using a variety of voices.
--   **✨ Interactive Canvas**: A dynamic, zoomable canvas where you can arrange, connect, and interact with AI agents.
--   **🤝 Real-time Collaboration**: Share your canvas with others to view and collaborate in real-time, powered by Convex.
--   **🔐 Secure Authentication**: User accounts are secured with Google, GitHub, and Twitter OAuth providers via `better-auth`.
--   **📝 Feedback System**: A built-in system for users to submit bug reports and feedback, with an admin-only board to view and manage submissions.
+-   **Real-time chat** with Durable Objects + WebSockets
+-   **Virtualized message list** using `@tanstack/solid-virtual`
+-   **OAuth sign-in** (Google, GitHub, Twitter) via `better-auth`
 
 ---
+
+## Overview
+
+This repo implements a real-time chat using Cloudflare Workers Durable Objects (WebSockets) with a SolidJS frontend powered by TanStack Router and Query.
+
+- Chat storage and fanout: Cloudflare Durable Objects (`api/chat.ts`)
+- API framework: Hono (`api/index.ts`)
+- Frontend: SolidJS + TanStack Router/Query
+- Virtualized message list: `@tanstack/solid-virtual`
+- Auth: better-auth with D1 + KV (`auth.ts`)
+
+See Chat Virtualization & Auto-Scroll details: [readme_assets/docs/chat-virtualization.md](readme_assets/docs/chat-virtualization.md).
 
 ## 🛠️ Tech Stack
 
@@ -26,7 +30,7 @@ An open-source, collaborative canvas for generative AI, powered by Cloudflare Wo
     -   [SolidJS](https://www.solidjs.com/) for reactive UI.
     -   [TanStack Router](https://tanstack.com/router/v1/docs/adapters/solid-router) for type-safe, file-based routing.
     -   [TanStack Query](https://tanstack.com/query/latest/docs/solid/overview) for server-state management.
-    -   [Tailwind CSS](https://tailwindcss.com/) & [Shadcn-Solid](https://shadcn-solid.com/) for styling.
+    -   [Tailwind CSS](https://tailwindcss.com/) & [Solid-UI](https://www.solid-ui.com/) for styling.
 -   **Backend**:
     -   [Cloudflare Workers](https://workers.cloudflare.com/) for serverless functions at the edge.
     -   [Hono](https://hono.dev/) for the API framework.
@@ -37,9 +41,7 @@ An open-source, collaborative canvas for generative AI, powered by Cloudflare Wo
     -   [Cloudflare KV](https://developers.cloudflare.com/kv/) for session management and caching.
 -   **Authentication**:
     -   [better-auth](https://www.better-auth.com/) for handling OAuth and session logic.
--   **AI/ML Services**:
-    -   [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) for intent detection and image generation.
-    -   [Fal AI](https://www.fal.ai/) for advanced image, video, and voice generation models.
+
 
 ---
 
@@ -81,33 +83,45 @@ bunx wrangler d1 migrations apply <YOUR_DB_NAME> --local
 bunx wrangler d1 migrations apply <YOUR_DB_NAME> --remote
 ```
 
-### 6. Run Development Server
+### 6. Run Development (Vite + Cloudflare plugin)
+One command. The Cloudflare Vite plugin runs the Worker alongside Vite and proxies `/api/*` to it using `wrangler.jsonc` (main: `api/index.ts`).
+
 ```bash
 bun run dev
+```
+
+- App + API: http://localhost:3000 (API under `/api/*`)
+- OAuth callbacks: handled via the client-side shim routes in `src/routes/api/auth/callback/*` due to SPA fallback.
+
+Optional standalone Worker (if you want to debug it separately):
+```bash
+bun run api:dev
 ```
 
 ---
 
 ## 📁 Project Structure
 
--   `api/`: Contains all Hono backend API route handlers (e.g., `images.ts`, `video.ts`, `ai-chat.ts`).
--   `src/`: The SolidJS frontend application.
-    -   `src/routes/`: File-based routing via TanStack Router.
-    -   `src/components/`: Reusable UI components.
-    -   `src/lib/`: Core logic, including auth, Convex client, and state management.
--   `convex/`: The Convex backend functions and schema definition.
--   `wrangler.jsonc`: Configuration for the Cloudflare Worker.
--   `schema.sql`: The SQL schema for the D1 database.
+-   `api/`: Hono worker
+    -   `api/index.ts`: Routes, CORS, auth session injection, chat endpoints
+    -   `api/chat.ts`: Durable Object (WebSockets + message storage)
+-   `auth.ts`: better-auth configured for D1 + KV
+-   `src/`: SolidJS frontend
+    -   `src/routes/`: File-based routing via TanStack Router
+    -   `src/components/chat-components/`: Chat UI (virtualized `MessageList.tsx`)
+    -   `src/lib/chat-scroll.ts`: Chat scroll management hook
+    -   `src/routes/api/auth/callback/*`: OAuth dev shim routes
+-   `readme_assets/docs/chat-virtualization.md`: Virtualization + auto-scroll documentation
+-   `convex/`: Convex functions (if used)
+-   `wrangler.jsonc`: Worker bindings (D1, KV, Durable Object)
+-   `schema.sql`: D1 schema
 
 ---
 
-## 🌐 API Endpoints
+## 🌐 API Endpoints (Chat)
 
-The backend is a Hono application running on a single Cloudflare Worker.
+Hono + Durable Object worker.
 
--   `/api/auth/*`: Handles user authentication (login, logout, callbacks) via `better-auth`.
--   `/api/ai-chat/process`: The core endpoint for the canvas chat agent. It analyzes user intent and orchestrates the creation of other agents.
--   `/api/images`: Endpoints for image generation, editing, uploading, and deletion.
--   `/api/video`: Endpoints to trigger asynchronous video generation and receive results via webhooks.
--   `/api/voice`: Endpoints to trigger asynchronous voice generation and receive results via webhooks.
--   `/api/feedback`: Endpoints for submitting and managing user feedback.
+-   `/api/auth/*`: Authentication via `better-auth`
+-   `/api/chat`: WebSocket upgrade to the chat Durable Object (requires auth)
+-   `/api/chat/messages`: HTTP endpoint for recent message history (requires auth)

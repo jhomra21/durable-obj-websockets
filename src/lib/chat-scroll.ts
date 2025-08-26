@@ -28,7 +28,7 @@ import { createEffect, onCleanup } from 'solid-js';
 export function useChatScroll(messageCount: () => number) {
   let scrollAreaRef: HTMLDivElement | undefined;
   let virtualizer: any = undefined;
-  let hasScrolledOnMount = false;
+  let lastMessageCount = 0;
 
   /**
    * Scrolls the chat area to the bottom with retry logic
@@ -40,29 +40,45 @@ export function useChatScroll(messageCount: () => number) {
     const count = messageCount();
     if (count === 0) return;
 
+    console.log('🔄 scrollToBottom attempt', retryCount + 1, '/', 8, {
+      hasScrollArea: !!scrollAreaRef,
+      messageCount: count,
+      hasVirtualizer: !!virtualizer,
+      virtualizerReady: virtualizer && virtualizer.getTotalSize && virtualizer.getTotalSize() > 0,
+      scrollHeight: scrollAreaRef.scrollHeight
+    });
+
     // Use virtualizer scrolling if available and ready
     if (virtualizer && virtualizer.getTotalSize && virtualizer.getTotalSize() > 0) {
       try {
         // Check if the virtualizer has rendered items
         const range = virtualizer.getVirtualItems();
         if (range && range.length > 0) {
+          console.log('📜 Using virtualizer scroll to index', count - 1);
+          // Anchor last item to the bottom of the viewport for chat UX
           virtualizer.scrollToIndex(count - 1, { align: 'end' });
           return;
+        } else {
+          console.log('📜 Virtualizer not ready, items:', range?.length || 0);
         }
       } catch (error) {
-        // Silently fall through to DOM scrolling or retry
+        console.log('📜 Virtualizer scroll failed:', error);
       }
     }
 
     // Fallback to DOM scrolling
     if (scrollAreaRef.scrollHeight > 0) {
+      console.log('📜 Using DOM scroll to bottom');
       scrollAreaRef.scrollTop = scrollAreaRef.scrollHeight;
       return;
     }
 
     // If neither method worked and we haven't retried too much, retry
-    if (retryCount < 5) {
-      setTimeout(() => scrollToBottom(retryCount + 1), 50);
+    if (retryCount < 7) {
+      console.log('📜 Retrying scroll in 100ms...');
+      setTimeout(() => scrollToBottom(retryCount + 1), 100);
+    } else {
+      console.log('📜 Failed to scroll after', retryCount + 1, 'attempts');
     }
   };
 
@@ -73,32 +89,23 @@ export function useChatScroll(messageCount: () => number) {
   const setVirtualizer = (v: any) => {
     virtualizer = v;
     
-    // If we have messages and haven't scrolled yet, scroll now that virtualizer is ready
-    if (messageCount() > 0 && !hasScrolledOnMount) {
-      hasScrolledOnMount = true;
+    // Always try to scroll when virtualizer becomes available with messages
+    // Don't rely on hasScrolledOnMount flag here - let the effect handle initial scroll
+    if (messageCount() > 0) {
       // Give virtualizer a moment to render items
       setTimeout(() => scrollToBottom(), 100);
     }
   };
 
   /**
-   * Initializes the scroll area reference and handles initial scroll
+   * Initializes the scroll area reference
    * Called by the ref callback on the scrollable container
    */
   const initializeScrollArea = (el: HTMLDivElement) => {
     scrollAreaRef = el;
-
-    // For navigation scenario with cached messages, wait for virtualizer to be ready
-    // The setVirtualizer function will handle the initial scroll when virtualizer is ready
-    // Only handle immediate scroll if we don't expect a virtualizer (non-virtualized lists)
-    if (messageCount() > 0 && !hasScrolledOnMount && !virtualizer) {
-      // Small delay to ensure this only runs if no virtualizer is coming
-      setTimeout(() => {
-        if (!virtualizer && messageCount() > 0 && !hasScrolledOnMount) {
-          hasScrolledOnMount = true;
-          scrollToBottom();
-        }
-      }, 50);
+    // If messages already exist on initial mount (e.g., refresh), ensure we scroll
+    if (messageCount() > 0) {
+      setTimeout(() => scrollToBottom(), 50);
     }
   };
 
@@ -112,22 +119,25 @@ export function useChatScroll(messageCount: () => number) {
     // Only proceed if we have a scroll area and messages
     if (!scrollAreaRef || count === 0) return;
 
-    // Handle refresh scenario: messages load after component mounts
-    if (!hasScrolledOnMount) {
-      hasScrolledOnMount = true;
-      // For virtualized lists, wait a bit longer for virtualizer to be ready
-      const delay = virtualizer ? 150 : 100;
+    // Check if this is the initial load (count increased from 0)
+    const isInitialLoad = lastMessageCount === 0 && count > 0;
+    // Check if new messages were added
+    const isNewMessage = count > lastMessageCount;
+
+    // Update last message count
+    lastMessageCount = count;
+
+    if (isInitialLoad) {
+      // Initial message loading - trigger scroll
       setTimeout(() => {
-        if (scrollAreaRef) {
-          scrollToBottom();
-        }
-      }, delay);
-    } else {
-      // Handle new messages being added - shorter delay for real-time updates
+        scrollToBottom();
+      }, 100);
+      
+    } else if (isNewMessage) {
+      // New message added - always scroll regardless of hasScrolledOnMount
+      // This ensures fresh page loads scroll when new messages arrive
       setTimeout(() => {
-        if (scrollAreaRef) {
-          scrollToBottom();
-        }
+        scrollToBottom();
       }, 30);
     }
   });
@@ -136,7 +146,7 @@ export function useChatScroll(messageCount: () => number) {
   onCleanup(() => {
     scrollAreaRef = undefined;
     virtualizer = undefined;
-    hasScrolledOnMount = false;
+    lastMessageCount = 0;
   });
 
   /**

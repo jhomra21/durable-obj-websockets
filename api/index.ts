@@ -2,8 +2,6 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { getAuth } from '../auth'
 import type { Env, HonoVariables } from './types'
-import voiceApi from './voice'
-import videoApi from './video'
 import { ChatRoomDurableObject } from './chat'
 
 const app = new Hono<{ Bindings: Env; Variables: HonoVariables }>()
@@ -56,12 +54,6 @@ app.get('/api/', (c) => {
 app.all('/api/auth/*', (c) => {
   return getAuth(c.env).handler(c.req.raw);
 });
-
-// Mount the voice API routes
-app.route('/api/voice', voiceApi);
-
-// Mount the video API routes
-app.route('/api/video', videoApi);
 
 // WebSocket chat route
 app.get('/api/chat', async (c) => {
