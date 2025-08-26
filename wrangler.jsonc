@@ -7,9 +7,8 @@
   ],
   "vars": {
     "NODE_ENV": "production",
-    "BETTER_AUTH_URL": "https://convex-workers-solid-tanstack-spa-betterauth-d1-kv.jhonra121.workers.dev/", //URL of deployed worker
-    "BUN_VERSION": "1.2.16",
-    "CONVEX_URL": "https://hip-shark-723.convex.cloud"
+    "BETTER_AUTH_URL": "https://durable-obj-websockets.jhonra121.workers.dev/", //URL of deployed worker
+    "BUN_VERSION": "1.2.20"
   },
   "observability": {
     "enabled": true
