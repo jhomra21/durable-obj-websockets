@@ -6,6 +6,7 @@ import { sessionQueryOptions, type SessionData } from './auth-guard';
 const DEBUG_WS = import.meta.env.DEV && false;
 const wslog = (...args: any[]) => { if (DEBUG_WS) console.debug(...args); };
 const wswarn = (...args: any[]) => { if (DEBUG_WS) console.warn(...args); };
+const MAX_AUTO_RECONNECT_ATTEMPTS = 2;
 
 /**
  * WebSocket Connection State
@@ -401,6 +402,14 @@ export class ChatService {
         status: 'disconnected',
         error: friendly
       });
+      // Stop auto-reconnect after MAX attempts (manual connects still allowed)
+      if (this.state.reconnectAttempts >= MAX_AUTO_RECONNECT_ATTEMPTS) {
+        this.updateState({
+          status: 'disconnected',
+          error: `${friendly} Auto-reconnect stopped after ${MAX_AUTO_RECONNECT_ATTEMPTS} attempts.`
+        });
+        return;
+      }
 
       // Reconnect with exponential backoff
       const delay = Math.min(2000 * Math.pow(1.5, this.state.reconnectAttempts), 30000);
