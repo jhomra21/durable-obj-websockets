@@ -38,6 +38,7 @@ export class ChatRoomDurableObject implements DurableObject {
   private cooldownUntil = new Map<string, number>();
   private readonly RATE_WINDOW_MS = 10_000; // 10s window
   private readonly RATE_MAX_MSGS = 20;      // max messages per window
+  private readonly RESCHEDULE_IDLE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
   // Load messages from storage on startup
   private async loadMessagesFromStorage() {
@@ -130,6 +131,15 @@ export class ChatRoomDurableObject implements DurableObject {
       return new Response("Missing user info", { status: 401 });
     }
 
+    // Log accepted upgrade attempt with minimal PII
+    try {
+      console.log('[WS_DO] upgrade accepted', {
+        path: url.pathname,
+        hasUser: true,
+        userId: userId.substring(0, 6) + '…',
+      });
+    } catch {}
+
     // Create WebSocket pair
     const webSocketPair = new WebSocketPair();
     const client = webSocketPair[0];
@@ -148,6 +158,12 @@ export class ChatRoomDurableObject implements DurableObject {
     };
 
     this.connections.set(connectionId, wsInfo);
+    try {
+      console.log('[WS_DO] client connected', {
+        connectionId: connectionId.substring(0, 8) + '…',
+        userId: userId.substring(0, 6) + '…',
+      });
+    } catch {}
 
     // Track and broadcast connection count
     this.broadcastUserCount();
@@ -313,6 +329,14 @@ export class ChatRoomDurableObject implements DurableObject {
       this.broadcastUserCount();
 
       if (wsInfo) {
+        try {
+          console.log('[WS_DO] client disconnected', {
+            connectionId: connectionId.substring(0, 8) + '…',
+            code,
+            reason,
+            wasClean,
+          });
+        } catch {}
         // Broadcast user left message
         this.broadcastMessage({
           id: crypto.randomUUID(),
@@ -375,10 +399,20 @@ export class ChatRoomDurableObject implements DurableObject {
       await this.pruneByPrefix(SYSTEM_PREFIX, this.maxMessages);
     } catch (e) {
       console.error('Error during alarm prune:', e);
-    } finally {
-      // Reschedule next prune to keep storage lean over time
-      await this.schedulePrune();
     }
+
+    // Reschedule only if there was recent activity within the idle window
+    try {
+      const now = Date.now();
+      const latestUser = await this.state.storage.list<ChatMessage>({ prefix: MESSAGE_PREFIX, reverse: true, limit: 1 });
+      const latestSys = await this.state.storage.list<ChatMessage>({ prefix: SYSTEM_PREFIX, reverse: true, limit: 1 });
+      const lastMsg = latestUser.values().next().value as ChatMessage | undefined;
+      const lastSys = latestSys.values().next().value as ChatMessage | undefined;
+      const lastTs = Math.max(lastMsg?.timestamp ?? 0, lastSys?.timestamp ?? 0);
+      if (lastTs && now - lastTs < this.RESCHEDULE_IDLE_WINDOW_MS) {
+        await this.schedulePrune();
+      }
+    } catch {}
   }
 
   private async pruneByPrefix(prefix: string, limit: number) {

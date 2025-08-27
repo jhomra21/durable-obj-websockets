@@ -1,6 +1,11 @@
 import type { QueryClient } from '@tanstack/solid-query';
 import type { ChatMessage } from '../../api/chat';
 import { isValidWebSocketMessage, sanitizeMessageContent } from './chat-validation';
+import { sessionQueryOptions, type SessionData } from './auth-guard';
+
+const DEBUG_WS = import.meta.env.DEV && false;
+const wslog = (...args: any[]) => { if (DEBUG_WS) console.debug(...args); };
+const wswarn = (...args: any[]) => { if (DEBUG_WS) console.warn(...args); };
 
 /**
  * WebSocket Connection State
@@ -119,6 +124,39 @@ export class ChatService {
       return;
     }
 
+    // Guard: allow connect if logged in AND (on chat route OR has connected before this session)
+    const path = window.location.pathname;
+    const isOnChatRoute = path === '/dashboard/chat';
+    let isLoggedIn = false;
+    try {
+      const session = this.queryClient.getQueryData(sessionQueryOptions().queryKey) as SessionData | undefined;
+      isLoggedIn = !!session;
+    } catch (e) {
+      wswarn('ChatService: session lookup failed', e);
+    }
+
+    const hasConnectedOnce = this.state.lastConnectedAt !== null;
+    const canConnect = isLoggedIn && (isOnChatRoute || hasConnectedOnce);
+
+    wslog('[WS_CONNECT_GUARD] connect() attempt', {
+      path,
+      isOnChatRoute,
+      isLoggedIn,
+      hasConnectedOnce,
+      canConnect,
+      currentStatus: this.state.status,
+    });
+
+    if (!canConnect) {
+      wswarn('[WS_CONNECT_GUARD] blocked connection attempt', { path, isOnChatRoute, isLoggedIn, hasConnectedOnce, canConnect });
+      // Ensure we are not stuck in connecting state
+      this.updateState({
+        isConnecting: false,
+        status: this.state.isConnected ? 'connected' : 'idle',
+      });
+      return;
+    }
+
     const isReconnecting = this.state.status === 'disconnected';
 
     this.updateState({
@@ -132,7 +170,7 @@ export class ChatService {
       // Create WebSocket connection
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/api/chat`;
-
+      wslog('[WS_CONNECT] creating WebSocket', { wsUrl });
 
       this.connection = new WebSocket(wsUrl);
 
@@ -238,7 +276,7 @@ export class ChatService {
    * Handle WebSocket open event
    */
   private handleOpen(): void {
-
+    wslog('[WS_CONNECT] open');
     
     this.updateState({
       isConnected: true,
@@ -260,7 +298,7 @@ export class ChatService {
       try {
         this.queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] });
       } catch (err) {
-        console.warn('ChatService: failed to invalidate messages on open', err);
+        wswarn('ChatService: failed to invalidate messages on open', err);
       }
     }
 
@@ -277,7 +315,7 @@ export class ChatService {
 
       // Validate message structure
       if (!isValidWebSocketMessage(data)) {
-        console.warn('ChatService: Received invalid WebSocket message:', data);
+        wswarn('ChatService: Received invalid WebSocket message:', data);
         return;
       }
 
@@ -338,7 +376,7 @@ export class ChatService {
    * Handle WebSocket close event
    */
   private handleClose(event: CloseEvent): void {
-    console.log('🔌 ChatService: WebSocket closed:', event.code, event.reason);
+    wslog('🔌 ChatService: WebSocket closed:', event.code, event.reason);
     
     this.stopHeartbeat();
     this.clearCooldownTimer();
@@ -366,7 +404,7 @@ export class ChatService {
 
       // Reconnect with exponential backoff
       const delay = Math.min(2000 * Math.pow(1.5, this.state.reconnectAttempts), 30000);
-      console.log(`ChatService: Reconnecting in ${delay}ms...`);
+      wslog(`ChatService: Reconnecting in ${delay}ms...`);
 
       this.reconnectTimeout = setTimeout(() => {
         if (!this.state.isConnected && !this.state.isConnecting) {

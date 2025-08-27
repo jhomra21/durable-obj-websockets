@@ -1,9 +1,14 @@
 import { createEffect, onCleanup } from 'solid-js';
 
+// Debug flag to control scroll logging (off by default)
+const DEBUG_SCROLL = import.meta.env.DEV && false;
+const slog = (...args: any[]) => { if (DEBUG_SCROLL) console.debug(...args); };
+
 /**
  * Chat Auto-Scroll Hook with Virtualization Support
  * 
  * Manages automatic scrolling to the bottom of a chat message list.
+ * 
  * Supports both regular DOM scrolling and virtualized scrolling.
  * Handles both initial page load and navigation scenarios reliably.
  * 
@@ -40,7 +45,7 @@ export function useChatScroll(messageCount: () => number) {
     const count = messageCount();
     if (count === 0) return;
 
-    console.log('🔄 scrollToBottom attempt', retryCount + 1, '/', 8, {
+    slog('🔄 scrollToBottom attempt', retryCount + 1, '/', 8, {
       hasScrollArea: !!scrollAreaRef,
       messageCount: count,
       hasVirtualizer: !!virtualizer,
@@ -54,31 +59,31 @@ export function useChatScroll(messageCount: () => number) {
         // Check if the virtualizer has rendered items
         const range = virtualizer.getVirtualItems();
         if (range && range.length > 0) {
-          console.log('📜 Using virtualizer scroll to index', count - 1);
+          slog('📜 Using virtualizer scroll to index', count - 1);
           // Anchor last item to the bottom of the viewport for chat UX
           virtualizer.scrollToIndex(count - 1, { align: 'end' });
           return;
         } else {
-          console.log('📜 Virtualizer not ready, items:', range?.length || 0);
+          slog('📜 Virtualizer not ready, items:', range?.length || 0);
         }
       } catch (error) {
-        console.log('📜 Virtualizer scroll failed:', error);
+        slog('📜 Virtualizer scroll failed:', error);
       }
     }
 
     // Fallback to DOM scrolling
     if (scrollAreaRef.scrollHeight > 0) {
-      console.log('📜 Using DOM scroll to bottom');
+      slog('📜 Using DOM scroll to bottom');
       scrollAreaRef.scrollTop = scrollAreaRef.scrollHeight;
       return;
     }
 
     // If neither method worked and we haven't retried too much, retry
     if (retryCount < 7) {
-      console.log('📜 Retrying scroll in 100ms...');
+      slog('📜 Retrying scroll in 100ms...');
       setTimeout(() => scrollToBottom(retryCount + 1), 100);
     } else {
-      console.log('📜 Failed to scroll after', retryCount + 1, 'attempts');
+      slog('📜 Failed to scroll after', retryCount + 1, 'attempts');
     }
   };
 

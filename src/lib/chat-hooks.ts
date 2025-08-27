@@ -73,11 +73,8 @@ export function useChat() {
   return {
     // Message data from TanStack Query (cached + background updates)
     messages: (): ChatMessage[] => messagesQuery.data || [],
-    isLoadingMessages: messagesQuery.isLoading,
-    messagesError: messagesQuery.error,
-    
-    // WebSocket connection state (reactive)
-    connectionState: connectionState(),
+    isLoadingMessages: () => messagesQuery.isLoading,
+    messagesError: () => messagesQuery.error,
     
     // Derived state for convenience
     isConnected: () => connectionState().isConnected,
@@ -85,6 +82,13 @@ export function useChat() {
     connectionError: () => connectionState().error,
     userCount: () => connectionState().userCount,
     sendCooldownUntil: () => connectionState().sendCooldownUntil ?? null,
+    // New: expose reactive accessors for fields previously read from a snapshot
+    status: () => connectionState().status,
+    connectionQuality: () => connectionState().connectionQuality,
+    lastConnectedAt: () => connectionState().lastConnectedAt,
+    lastDisconnectedAt: () => connectionState().lastDisconnectedAt,
+    reconnectAttempts: () => connectionState().reconnectAttempts,
+    isReconnecting: () => connectionState().status === 'reconnecting',
     
     // Actions
     sendMessage,
@@ -118,11 +122,18 @@ export function useChatConnection() {
   });
 
   return {
-    state: connectionState(),
+    // Reactive accessors only (no snapshot object)
+    status: () => connectionState().status,
     isConnected: () => connectionState().isConnected,
     isConnecting: () => connectionState().isConnecting,
+    isReconnecting: () => connectionState().status === 'reconnecting',
+    connectionQuality: () => connectionState().connectionQuality,
+    lastConnectedAt: () => connectionState().lastConnectedAt,
+    lastDisconnectedAt: () => connectionState().lastDisconnectedAt,
+    reconnectAttempts: () => connectionState().reconnectAttempts,
     error: () => connectionState().error,
     userCount: () => connectionState().userCount,
+    sendCooldownUntil: () => connectionState().sendCooldownUntil ?? null,
     connect: () => chatService.connect(),
     disconnect: () => chatService.disconnect(),
   };

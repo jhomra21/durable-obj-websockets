@@ -1,4 +1,4 @@
-import { createSignal, createMemo } from 'solid-js';
+import { createSignal, createMemo, onMount } from 'solid-js';
 import { useChat } from '~/lib/chat-hooks';
 import { useChatScroll } from '~/lib/chat-scroll';
 import { useChatPerformance } from '~/lib/chat-performance';
@@ -7,6 +7,11 @@ import { ChatHeader, MessageList, MessageInput } from './chat-components';
 export function Chat() {
   // New optimized chat hook - combines cached data + real-time WebSocket
   const chat = useChat();
+
+  // Ensure connection only while on the chat route
+  onMount(() => {
+    chat.connect();
+  });
 
   // Message input state
   const [newMessage, setNewMessage] = createSignal('');
@@ -33,20 +38,20 @@ export function Chat() {
   // Create a compatible state object for existing components
   const compatibleState = createMemo(() => ({
     messages: messages(),
-    connectionStatus: chat.connectionState.status,
+    connectionStatus: chat.status(),
     isConnected: chat.isConnected(),
     isConnecting: chat.isConnecting(),
-    error: chat.connectionError() || (chat.messagesError ? String(chat.messagesError) : null),
+    error: chat.connectionError() || (chat.messagesError() ? String(chat.messagesError()) : null),
     userCount: chat.userCount(),
-    sendCooldownUntil: chat.sendCooldownUntil ? chat.sendCooldownUntil() : null,
+    sendCooldownUntil: chat.sendCooldownUntil(),
     // Loading states
-    isLoadingMessages: chat.isLoadingMessages,
+    isLoadingMessages: chat.isLoadingMessages(),
     // Connection quality derived from connection state
-    connectionQuality: chat.connectionState.connectionQuality,
-    isReconnecting: chat.connectionState.status === 'reconnecting',
-    lastConnectedAt: chat.connectionState.lastConnectedAt,
-    lastDisconnectedAt: chat.connectionState.lastDisconnectedAt,
-    reconnectAttempts: chat.connectionState.reconnectAttempts,
+    connectionQuality: chat.connectionQuality(),
+    isReconnecting: chat.isReconnecting(),
+    lastConnectedAt: chat.lastConnectedAt(),
+    lastDisconnectedAt: chat.lastDisconnectedAt(),
+    reconnectAttempts: chat.reconnectAttempts(),
   }));
 
   return (
