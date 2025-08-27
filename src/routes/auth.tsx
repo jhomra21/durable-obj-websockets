@@ -237,7 +237,7 @@ function AuthPage() {
                 </Show>
                 Sign In with Google
               </Button>
-              <Button variant="outline" class="w-full mt-4" onClick={() => {
+              {/* <Button variant="outline" class="w-full mt-4" onClick={() => {
                 setLoadingAction('github');
                 githubSignInMutation.mutate(undefined, {
                   onError: (err) => {
@@ -271,7 +271,7 @@ function AuthPage() {
                   </svg>
                 </Show>
                 Sign In with Twitter
-              </Button>
+              </Button> */}
             </div>
           </Show>
         </CardContent>
