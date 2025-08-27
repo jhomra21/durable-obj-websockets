@@ -1,5 +1,3 @@
-
-
 # Durable Objects Chat (SolidJS + TanStack)
 
 Real-time chat powered by Cloudflare Workers Durable Objects (WebSockets) and a SolidJS frontend. Uses TanStack Router/Query, Tailwind, and Solid-UI components. OAuth via better-auth with D1 + KV.
@@ -125,3 +123,115 @@ Hono + Durable Object worker.
 -   `/api/auth/*`: Authentication via `better-auth`
 -   `/api/chat`: WebSocket upgrade to the chat Durable Object (requires auth)
 -   `/api/chat/messages`: HTTP endpoint for recent message history (requires auth)
+---
+
+## 💬 Chat System Architecture
+
+The real-time chat is built on a robust, scalable architecture using Cloudflare Durable Objects for the backend and a reactive SolidJS frontend that intelligently combines cached data with live WebSocket updates.
+
+### Backend: Cloudflare Durable Object
+
+The core of the chat backend is the `ChatRoomDurableObject`, defined in `api/chat.ts`. Each chat "room" is a separate instance of this Durable Object, providing excellent isolation and scalability.
+
+-   **WebSocket Handling**: The DO's `fetch` handler upgrades HTTP requests to WebSocket connections. It uses `state.acceptWebSocket(server)` to manage the connection lifecycle, even through serverless hibernations.
+-   **Connection Management**: Active WebSocket connections are stored in a `Map` within the object. To support hibernation, connection details are serialized using `server.serializeAttachment()`, allowing the DO to restore connections seamlessly after being evicted from memory.
+-   **Message Broadcasting**: When a message is received via `webSocketMessage`, it's persisted to Durable Object storage and then broadcasted to all other connected clients in the same DO instance.
+
+    ```typescript
+    // Simplified from api/chat.ts
+    export class ChatRoomDurableObject implements DurableObject {
+      private connections: Map<string, WebSocketInfo> = new Map();
+      private state: DurableObjectState;
+
+      async fetch(request: Request) {
+        // ...
+        const { client, server } = new WebSocketPair();
+        this.state.acceptWebSocket(server); // DO manages the WebSocket
+        return new Response(null, { status: 101, webSocket: client });
+      }
+
+      async webSocketMessage(ws: WebSocket, msg: string) {
+        const chatMessage: ChatMessage = { /* ... create message ... */ };
+        
+        // Persist and broadcast
+        await this.state.storage.put(key, chatMessage);
+        this.broadcastMessage(chatMessage);
+      }
+
+      private broadcastMessage(message: ChatMessage) {
+        for (const wsInfo of this.connections.values()) {
+          wsInfo.ws.send(JSON.stringify({ type: 'message', message }));
+        }
+      }
+    }
+    ```
+
+-   **Persistence**: Messages are stored in the DO's transactional storage API (`this.state.storage`), ensuring durability. An alarm (`state.storage.setAlarm()`) is used to periodically prune old messages.
+-   **Configuration**: The Durable Object is bound in `wrangler.jsonc`, making it available to the worker.
+
+    ```json
+    // From wrangler.jsonc
+    "durable_objects": {
+      "bindings": [
+        {
+          "name": "CHAT_ROOM",
+          "class_name": "ChatRoomDurableObject"
+        }
+      ]
+    }
+    ```
+
+### Frontend: SolidJS + TanStack Query + WebSockets
+
+The frontend provides a seamless user experience by loading historical messages quickly from a cache while connecting to a WebSocket for real-time updates.
+
+-   **Hybrid Data Loading**:
+    1.  **Initial Load**: The `useChatMessages` query (in `src/lib/chat-queries.ts`) makes an HTTP request to `/api/chat/messages` to fetch the most recent message history. This data is managed by TanStack Query, providing caching and background refetching.
+    2.  **Real-time Updates**: Simultaneously, the `ChatService` (managed via `src/lib/chat-hooks.ts`) establishes a WebSocket connection to the Durable Object.
+
+-   **Centralized Logic: `useChat` Hook**: The `useChat` hook (from `src/lib/chat-hooks.ts`) is the primary entry point for components. It elegantly combines the cached data from TanStack Query with the live state from the WebSocket service.
+
+    ```typescript
+    // From src/lib/chat-hooks.ts
+    export function useChat() {
+      // 1. Get cached messages via TanStack Query
+      const messagesQuery = useChatMessages();
+      
+      // 2. Get live connection state from the WebSocket service
+      const [connectionState, setConnectionState] = createSignal(chatService.getState());
+
+      // ... subscribe to service updates ...
+
+      return {
+        // Returns a unified view:
+        messages: () => messagesQuery.data || [], // Cached + updated data
+        isConnected: () => connectionState().isConnected, // Live status
+        sendMessage, // Action to send messages
+        // ... and other reactive state
+      };
+    }
+    ```
+
+-   **Component Integration**: The main `<Chat />` component (in `src/components/Chat.tsx`) uses the `useChat` hook to get all the data and actions it needs, keeping the component clean and focused on rendering the UI.
+
+    ```tsx
+    // Simplified from src/components/Chat.tsx
+    import { useChat } from '~/lib/chat-hooks';
+
+    export function Chat() {
+      // The hook provides everything the component needs
+      const chat = useChat();
+
+      onMount(() => {
+        chat.connect(); // Establish WebSocket connection on mount
+      });
+
+      return (
+        <div class="chat-container">
+          <ChatHeader state={chat} />
+          <MessageList messages={chat.messages()} />
+          <MessageInput sendMessage={chat.sendMessage} />
+        </div>
+      );
+    }
+    ```
