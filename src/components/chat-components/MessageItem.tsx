@@ -30,7 +30,7 @@ const getUserInitials = (name: string) => {
 
 export function MessageItem(props: MessageItemProps) {
   return (
-    <div class={`flex gap-3 p-3 ${props.isLatest
+    <div class={`flex gap-3 p-2 ${props.isLatest
       ? 'animate-in fade-in ease-out'
       : ''}`}>
       <Avatar class="h-8 w-8 flex-shrink-0">

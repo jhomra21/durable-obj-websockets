@@ -53,19 +53,14 @@ export function useChatScroll(messageCount: () => number) {
       scrollHeight: scrollAreaRef.scrollHeight
     });
 
-    // Use virtualizer scrolling if available and ready
+    // Use virtualizer scrolling if available and has a computed size
     if (virtualizer && virtualizer.getTotalSize && virtualizer.getTotalSize() > 0) {
       try {
-        // Check if the virtualizer has rendered items
-        const range = virtualizer.getVirtualItems();
-        if (range && range.length > 0) {
-          slog('📜 Using virtualizer scroll to index', count - 1);
-          // Anchor last item to the bottom of the viewport for chat UX
-          virtualizer.scrollToIndex(count - 1, { align: 'end' });
-          return;
-        } else {
-          slog('📜 Virtualizer not ready, items:', range?.length || 0);
-        }
+        // Force scroll via virtualizer even if no items are currently visible.
+        // This prevents a "scrolled past total size" state from keeping the range empty.
+        slog('📜 Using virtualizer scroll to index (force)', count - 1);
+        virtualizer.scrollToIndex(count - 1, { align: 'end' });
+        return;
       } catch (error) {
         slog('📜 Virtualizer scroll failed:', error);
       }

@@ -55,7 +55,7 @@ export function Chat() {
   }));
 
   return (
-    <div class="flex flex-col h-full chat-container">
+    <div class="flex flex-col h-full min-h-0 overflow-hidden chat-container">
       <ChatHeader
         state={compatibleState()}
         connect={chat.connect}

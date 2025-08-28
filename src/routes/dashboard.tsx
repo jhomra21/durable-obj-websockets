@@ -86,11 +86,11 @@ function DashboardPage() {
           <div class="flex h-svh w-screen overflow-x-hidden bg-muted/40">
             <AppSidebar />
             <SidebarInset onScroll={handleScroll} class="flex-grow min-w-0 bg-background rounded-xl shadow-md transition-transform ease-out flex flex-col overflow-y-auto min-h-0">
-              <header class={`flex h-16 shrink-0 items-center rounded-t-xl bg-background sticky top-0 z-20 transition-shadow ${isScrolled() ? 'shadow-md' : ''}`}>
-                <div class="flex items-center gap-2 !pl-2 !pr-0 min-w-0 flex-1">
+              <header class={`flex h-16 shrink-0 items-center rounded-xl bg-background sticky top-0 z-20 transition-shadow ${isScrolled() ? 'shadow-md' : ''}`}>
+                <div class="flex items-center gap-2 p-2 ml-0.5 min-w-0 flex-1">
                   <Tooltip openDelay={500}>
                     <TooltipTrigger>
-                      <SidebarTrigger class="-ml-[7px] flex-shrink-0" />
+                      <SidebarTrigger class="flex-shrink-0" />
                     </TooltipTrigger>
                     <TooltipContent>
                       <p>Toggle Sidebar</p>
