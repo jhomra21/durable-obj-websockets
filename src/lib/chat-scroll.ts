@@ -6,38 +6,85 @@ const slog = (...args: any[]) => { if (DEBUG_SCROLL) console.debug(...args); };
 
 /**
  * Chat Auto-Scroll Hook with Virtualization Support
- * 
- * Manages automatic scrolling to the bottom of a chat message list.
- * 
- * Supports both regular DOM scrolling and virtualized scrolling.
- * Handles both initial page load and navigation scenarios reliably.
- * 
- * Key Features:
- * - Automatically scrolls to bottom when messages are loaded or added
- * - Supports @tanstack/solid-virtual for performance with large message lists
- * - Handles timing issues where messages exist in state but DOM isn't rendered yet
- * - Works consistently across page refresh and router navigation
- * - Includes retry mechanism for DOM rendering delays
- * 
- * Usage:
- * ```tsx
- * const { initializeScrollArea, setVirtualizer } = useChatScroll(messageCount, latestMessageId);
- * 
- * return (
- *   <div ref={initializeScrollArea} class="overflow-y-auto">
- *     // Virtualized content
- *   </div>
- * );
- * ```
+ *
+ * Robustly scrolls to the bottom on initial load and navigation by waiting
+ * until either the virtualizer has computed a visible range or the DOM has
+ * a usable scrollHeight, retrying via rAF.
  */
 export function useChatScroll(messageCount: () => number) {
   let scrollAreaRef: HTMLDivElement | undefined;
   let virtualizer: any = undefined;
   let lastMessageCount = 0;
+  let pendingEnsure = 0; // rAF id for ensure loop
+
+  const cancelPendingEnsure = () => {
+    if (pendingEnsure) {
+      cancelAnimationFrame(pendingEnsure);
+      pendingEnsure = 0;
+    }
+  };
+
+  const ensureBottomWhenReady = (attempt = 0, maxAttempts = 12) => {
+    if (!scrollAreaRef || messageCount() === 0) return;
+
+    const count = messageCount();
+    const v = virtualizer;
+    const vReady = !!(v && v.getTotalSize && v.getTotalSize() > 0 && v.getVirtualItems && v.getVirtualItems().length > 0);
+
+    slog('🧲 ensureBottomWhenReady', { attempt, vReady, totalSize: v?.getTotalSize?.(), domScrollH: scrollAreaRef.scrollHeight });
+
+    if (vReady) {
+      try {
+        // First, ask virtualizer to align the last item to the end
+        v.scrollToIndex(count - 1, { align: 'end' });
+        // Then, on the next frame, clamp the DOM scroll to the absolute bottom
+        // so any bottom padding on the scroll area is respected.
+        if (scrollAreaRef) {
+          requestAnimationFrame(() => {
+            if (scrollAreaRef) {
+              scrollAreaRef.scrollTop = scrollAreaRef.scrollHeight;
+            }
+          });
+        }
+        return;
+      } catch (e) {
+        slog('ensureBottom: virtualizer scroll failed', e);
+      }
+    }
+
+    if (scrollAreaRef.scrollHeight > 0) {
+      scrollAreaRef.scrollTop = scrollAreaRef.scrollHeight;
+      return;
+    }
+
+    if (attempt < maxAttempts) {
+      pendingEnsure = requestAnimationFrame(() => ensureBottomWhenReady(attempt + 1, maxAttempts));
+    }
+  };
+
+  // Keep aligning to bottom for a short stabilization window
+  const lockToBottomFor = (durationMs = 320, thresholdPx = 6) => {
+    if (!scrollAreaRef) return;
+    cancelPendingEnsure();
+    let startTs = 0;
+    const loop = (ts: number) => {
+      if (!scrollAreaRef) return;
+      if (!startTs) startTs = ts;
+      // If we're not near bottom, try to align again
+      const remaining = scrollAreaRef.scrollHeight - scrollAreaRef.scrollTop - scrollAreaRef.clientHeight;
+      if (remaining > thresholdPx) {
+        ensureBottomWhenReady();
+      }
+      if (ts - startTs < durationMs) {
+        pendingEnsure = requestAnimationFrame(loop);
+      }
+    };
+    pendingEnsure = requestAnimationFrame(loop);
+  };
 
   /**
    * Scrolls the chat area to the bottom with retry logic
-   * Uses virtualizer if available, otherwise falls back to DOM scrolling
+   * Uses virtualizer if available and has a computed size
    */
   const scrollToBottom = (retryCount = 0) => {
     if (!scrollAreaRef) return;
@@ -88,12 +135,11 @@ export function useChatScroll(messageCount: () => number) {
    */
   const setVirtualizer = (v: any) => {
     virtualizer = v;
-    
     // Always try to scroll when virtualizer becomes available with messages
-    // Don't rely on hasScrolledOnMount flag here - let the effect handle initial scroll
     if (messageCount() > 0) {
-      // Give virtualizer a moment to render items
-      setTimeout(() => scrollToBottom(), 100);
+      cancelPendingEnsure();
+      // Let layout/transition settle, then ensure bottom via virtualizer readiness
+      setTimeout(() => ensureBottomWhenReady(), 120);
     }
   };
 
@@ -105,7 +151,9 @@ export function useChatScroll(messageCount: () => number) {
     scrollAreaRef = el;
     // If messages already exist on initial mount (e.g., refresh), ensure we scroll
     if (messageCount() > 0) {
-      setTimeout(() => scrollToBottom(), 50);
+      cancelPendingEnsure();
+      // Small delay for ResizeObserver/virtualizer.measure to run on first frame
+      requestAnimationFrame(() => ensureBottomWhenReady());
     }
   };
 
@@ -129,16 +177,12 @@ export function useChatScroll(messageCount: () => number) {
 
     if (isInitialLoad) {
       // Initial message loading - trigger scroll
-      setTimeout(() => {
-        scrollToBottom();
-      }, 100);
+      cancelPendingEnsure();
+      setTimeout(() => ensureBottomWhenReady(), 120);
       
     } else if (isNewMessage) {
-      // New message added - always scroll regardless of hasScrolledOnMount
-      // This ensures fresh page loads scroll when new messages arrive
-      setTimeout(() => {
-        scrollToBottom();
-      }, 30);
+      // New message added — lock to bottom briefly until measurements settle
+      lockToBottomFor();
     }
   });
 
@@ -147,6 +191,7 @@ export function useChatScroll(messageCount: () => number) {
     scrollAreaRef = undefined;
     virtualizer = undefined;
     lastMessageCount = 0;
+    cancelPendingEnsure();
   });
 
   /**

@@ -23,6 +23,9 @@ export function MessageList(props: MessageListProps) {
   const [vTick, setVTick] = createSignal(0); // triggers UI updates on virtualizer changes
   let resizeObserver: ResizeObserver | undefined;
   let scrolledToEndOnce = false; // ensure single initial scroll clamp
+  // Track message count to trigger a single auto-scroll once the virtual range includes the new item
+  let lastMessageCountForAutoScroll = 0;
+  let pendingAutoScroll = false;
 
   // Create virtualizer using the Solid adapter's reactive options accessor
   const virtualizer = createVirtualizer((() => ({
@@ -91,6 +94,23 @@ export function MessageList(props: MessageListProps) {
       }
       // Nudge Solid to re-read virtual items
       setVTick((c) => c + 1);
+
+      // If a new message was detected, ensure the last index is visible once range includes it
+      if (pendingAutoScroll) {
+        try {
+          const items = instance.getVirtualItems();
+          const count = (instance as any).options?.count;
+          const resolvedCount = typeof count === 'function' ? count() : count;
+          const lastVisible = items.length ? items[items.length - 1].index : -1;
+          if (resolvedCount && lastVisible < resolvedCount - 1) {
+            // Range not yet including the latest item — keep nudging to end
+            instance.scrollToIndex(resolvedCount - 1, { align: 'end' } as any);
+          } else {
+            // Latest is visible; stop auto-scroll attempts
+            pendingAutoScroll = false;
+          }
+        } catch {}
+      }
     },
   })) as any);
   if (import.meta.env.DEV && DEBUG_VIRTUALIZER) {
@@ -162,6 +182,15 @@ export function MessageList(props: MessageListProps) {
         virtualizer.measure();
       });
     }
+  });
+
+  // Mark that we need to auto-scroll when a new message enters the list
+  createEffect(() => {
+    const count = props.state.messages.length;
+    if (count > lastMessageCountForAutoScroll) {
+      pendingAutoScroll = true;
+    }
+    lastMessageCountForAutoScroll = count;
   });
 
   // Removed manual setOptions: Solid adapter reacts to signals in the accessor above
@@ -285,7 +314,7 @@ export function MessageList(props: MessageListProps) {
           >
             <div
               ref={initializeScrollArea}
-              class="overflow-y-auto h-full"
+              class="overflow-y-auto h-full pb-4"
               onScroll={(e) => {
                 if (import.meta.env.DEV && DEBUG_VIRTUALIZER) {
                   const items = virtualizer.getVirtualItems();

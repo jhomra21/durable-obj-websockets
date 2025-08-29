@@ -28,7 +28,7 @@ export function Chat() {
   });
 
   // Scroll management hook with virtualizer support
-  const { initializeScrollArea, setVirtualizer } = useChatScroll(messageCount);
+  const { initializeScrollArea, setVirtualizer, forceScrollToBottom } = useChatScroll(messageCount);
 
   // Performance monitoring in development
   if (import.meta.env.DEV) {
@@ -75,7 +75,15 @@ export function Chat() {
         state={compatibleState()}
         newMessage={newMessage}
         setNewMessage={setNewMessage}
-        sendMessage={chat.sendMessage}
+        sendMessage={(content) => {
+          const ok = chat.sendMessage(content);
+          if (ok) {
+            // Proactively scroll right after send; do not wait for server echo
+            // to avoid landing slightly above bottom due to late measurements.
+            requestAnimationFrame(() => forceScrollToBottom());
+          }
+          return ok;
+        }}
       />
     </div>
   );
