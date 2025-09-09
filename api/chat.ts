@@ -413,7 +413,25 @@ export class ChatRoomDurableObject implements DurableObject {
   }
 
   private broadcastUserCount() {
-    const payload = JSON.stringify({ type: 'userCount', count: this.connections.size });
+    // Get list of connected users (excluding duplicates by userId)
+    const connectedUsers = new Map<string, { userId: string; userName: string; userImage?: string }>();
+    
+    for (const [, info] of this.connections) {
+      if (info.ws.readyState === WebSocket.OPEN) {
+        connectedUsers.set(info.userId, {
+          userId: info.userId,
+          userName: info.userName,
+          userImage: info.userImage
+        });
+      }
+    }
+
+    const payload = JSON.stringify({ 
+      type: 'userCount', 
+      count: this.connections.size,
+      connectedUsers: Array.from(connectedUsers.values())
+    });
+    
     for (const [id, info] of this.connections) {
       try {
         if (info.ws.readyState === WebSocket.OPEN) info.ws.send(payload);

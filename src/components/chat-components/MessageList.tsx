@@ -27,6 +27,42 @@ export function MessageList(props: MessageListProps) {
   let lastMessageCountForAutoScroll = 0;
   let pendingAutoScroll = false;
 
+  // Helper function to determine if messages should be grouped
+  const shouldGroupMessages = (currentMsg: any, prevMsg: any) => {
+    if (!currentMsg || !prevMsg) return false;
+
+    // Don't group system messages
+    if (currentMsg.type === 'system' || prevMsg.type === 'system') return false;
+
+    // Group if same user and within 5 minutes
+    const timeDiff = currentMsg.timestamp - prevMsg.timestamp;
+    const fiveMinutes = 5 * 60 * 1000;
+
+    return currentMsg.userId === prevMsg.userId && timeDiff < fiveMinutes;
+  };
+
+  // Memoized message grouping info - MUST be defined before virtualizer
+  const messageGroupInfo = createMemo(() => {
+    const messages = props.state.messages;
+    return messages.map((message, index) => {
+      const prevMessage = index > 0 ? messages[index - 1] : null;
+      const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+
+      const isGroupedWithPrev = shouldGroupMessages(message, prevMessage);
+      const isGroupedWithNext = shouldGroupMessages(nextMessage, message);
+
+      const isGrouped = isGroupedWithPrev || isGroupedWithNext;
+      const isFirstInGroup = isGrouped && !isGroupedWithPrev;
+      const isLastInGroup = isGrouped && !isGroupedWithNext;
+
+      return {
+        isGrouped,
+        isFirstInGroup,
+        isLastInGroup,
+      };
+    });
+  });
+
   // Create virtualizer using the Solid adapter's reactive options accessor
   const virtualizer = createVirtualizer((() => ({
     // Pass a number for count (core expects a number)
@@ -219,41 +255,7 @@ export function MessageList(props: MessageListProps) {
 
   // (removed) hasScrollDimensions — replaced by containerReady signal
 
-  // Helper function to determine if messages should be grouped
-  const shouldGroupMessages = (currentMsg: any, prevMsg: any) => {
-    if (!currentMsg || !prevMsg) return false;
 
-    // Don't group system messages
-    if (currentMsg.type === 'system' || prevMsg.type === 'system') return false;
-
-    // Group if same user and within 5 minutes
-    const timeDiff = currentMsg.timestamp - prevMsg.timestamp;
-    const fiveMinutes = 5 * 60 * 1000;
-
-    return currentMsg.userId === prevMsg.userId && timeDiff < fiveMinutes;
-  };
-
-  // Memoized message grouping info
-  const messageGroupInfo = createMemo(() => {
-    const messages = props.state.messages;
-    return messages.map((message, index) => {
-      const prevMessage = index > 0 ? messages[index - 1] : null;
-      const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
-
-      const isGroupedWithPrev = shouldGroupMessages(message, prevMessage);
-      const isGroupedWithNext = shouldGroupMessages(nextMessage, message);
-
-      const isGrouped = isGroupedWithPrev || isGroupedWithNext;
-      const isFirstInGroup = isGrouped && !isGroupedWithPrev;
-      const isLastInGroup = isGrouped && !isGroupedWithNext;
-
-      return {
-        isGrouped,
-        isFirstInGroup,
-        isLastInGroup,
-      };
-    });
-  });
 
   // Memoized virtual items for performance
   const virtualItems = createMemo(() => {

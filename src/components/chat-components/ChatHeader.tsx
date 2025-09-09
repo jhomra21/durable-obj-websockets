@@ -1,6 +1,6 @@
 import { Show, createMemo } from 'solid-js';
 import { Button } from '~/components/ui/button';
-import { Badge } from '~/components/ui/badge';
+import { OnlineUsersDropdown } from './OnlineUsersDropdown';
 import type { WebSocketState } from '~/lib/websocket-chat';
 
 interface ChatHeaderProps {
@@ -45,11 +45,10 @@ export function ChatHeader(props: ChatHeaderProps) {
       </div>
       
       <div class="flex items-center gap-3">
-        <Show when={props.state.userCount > 0}>
-          <Badge variant="secondary" class="text-xs">
-            👥 {props.state.userCount} online
-          </Badge>
-        </Show>
+        <OnlineUsersDropdown 
+          userCount={props.state.userCount}
+          connectedUsers={props.state.connectedUsers || []}
+        />
         <Button
           variant="outline"
           size="sm"

@@ -8,6 +8,13 @@ const wslog = (...args: any[]) => { if (DEBUG_WS) console.debug(...args); };
 const wswarn = (...args: any[]) => { if (DEBUG_WS) console.warn(...args); };
 const MAX_AUTO_RECONNECT_ATTEMPTS = 2;
 
+// Connected user info
+export interface ConnectedUser {
+  userId: string;
+  userName: string;
+  userImage?: string;
+}
+
 /**
  * WebSocket Connection State
  */
@@ -21,6 +28,7 @@ export interface WebSocketConnectionState {
   lastDisconnectedAt: number | null;
   reconnectAttempts: number;
   userCount: number;
+  connectedUsers: ConnectedUser[];
   // Optional: when present and in the future, sending is disabled until this timestamp (ms)
   sendCooldownUntil?: number | null;
 }
@@ -58,6 +66,7 @@ export class ChatService {
     lastDisconnectedAt: null,
     reconnectAttempts: 0,
     userCount: 0,
+    connectedUsers: [],
   };
 
   // State change subscribers
@@ -322,7 +331,13 @@ export class ChatService {
       if (data.type === 'message' && data.message) {
         this.handleNewMessage(data.message);
       } else if (data.type === 'userCount' && typeof data.count === 'number') {
-        this.updateState({ userCount: Math.max(0, data.count) });
+        const updates: Partial<WebSocketConnectionState> = { 
+          userCount: Math.max(0, data.count) 
+        };
+        if (data.connectedUsers && Array.isArray(data.connectedUsers)) {
+          updates.connectedUsers = data.connectedUsers;
+        }
+        this.updateState(updates);
       } else if (data.type === 'rateLimit' && typeof data.retryAfterMs === 'number') {
         const retry = Math.max(0, data.retryAfterMs);
         this.sendCooldownUntil = Date.now() + retry;

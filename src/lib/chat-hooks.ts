@@ -19,7 +19,7 @@ import type { ChatMessage } from '../../api/chat';
 export function useChat() {
   const queryClient = useQueryClient();
   const chatService = ChatService.getInstance();
-  
+
   // Get cached messages via TanStack Query
   const messagesQuery = useChatMessages();
   const chatMutations = useChatMutations();
@@ -31,7 +31,7 @@ export function useChat() {
       messagesQuery.refetch();
     }
   });
-  
+
   // Reactive WebSocket connection state
   const [connectionState, setConnectionState] = createSignal<WebSocketConnectionState>(
     chatService.getState()
@@ -41,7 +41,7 @@ export function useChat() {
   createEffect(() => {
     // Initialize the service with QueryClient
     chatService.initialize(queryClient);
-    
+
     // Subscribe to connection state changes
     const unsubscribe = chatService.subscribe((state) => {
       setConnectionState(state);
@@ -75,12 +75,13 @@ export function useChat() {
     messages: (): ChatMessage[] => messagesQuery.data || [],
     isLoadingMessages: () => messagesQuery.isLoading,
     messagesError: () => messagesQuery.error,
-    
+
     // Derived state for convenience
     isConnected: () => connectionState().isConnected,
     isConnecting: () => connectionState().isConnecting,
     connectionError: () => connectionState().error,
     userCount: () => connectionState().userCount,
+    connectedUsers: () => connectionState().connectedUsers,
     sendCooldownUntil: () => connectionState().sendCooldownUntil ?? null,
     // New: expose reactive accessors for fields previously read from a snapshot
     status: () => connectionState().status,
@@ -89,17 +90,17 @@ export function useChat() {
     lastDisconnectedAt: () => connectionState().lastDisconnectedAt,
     reconnectAttempts: () => connectionState().reconnectAttempts,
     isReconnecting: () => connectionState().status === 'reconnecting',
-    
+
     // Actions
     sendMessage,
     connect,
     disconnect,
     clearError,
-    
+
     // Query actions
     refetchMessages: messagesQuery.refetch,
     invalidateMessages: chatMutations.invalidateMessages,
-    
+
     // For debugging
     queryClient,
     chatService,
@@ -133,6 +134,7 @@ export function useChatConnection() {
     reconnectAttempts: () => connectionState().reconnectAttempts,
     error: () => connectionState().error,
     userCount: () => connectionState().userCount,
+    connectedUsers: () => connectionState().connectedUsers,
     sendCooldownUntil: () => connectionState().sendCooldownUntil ?? null,
     connect: () => chatService.connect(),
     disconnect: () => chatService.disconnect(),
@@ -177,16 +179,16 @@ export function useChatSender() {
     try {
       // Add optimistic message to cache
       await chatMutations.addMessage.mutateAsync(optimisticMessage);
-      
+
       // Send via WebSocket
       const sent = chatService.sendMessage(content);
-      
+
       if (!sent) {
         // Remove optimistic message if send failed
         await chatMutations.removeMessage.mutateAsync(optimisticMessage.id);
         throw new Error('Failed to send message');
       }
-      
+
       return true;
     } catch (error) {
       console.error('Failed to send message optimistically:', error);

@@ -24,7 +24,20 @@ export function isValidWebSocketMessage(data: any): boolean {
     case 'history':
       return Array.isArray(data.messages) && data.messages.every(isValidChatMessage);
     case 'userCount':
-      return typeof data.count === 'number' && data.count >= 0;
+      return (
+        typeof data.count === 'number' && 
+        data.count >= 0 &&
+        (data.connectedUsers === undefined || (
+          Array.isArray(data.connectedUsers) &&
+          data.connectedUsers.every((user: any) => 
+            typeof user === 'object' &&
+            user !== null &&
+            typeof user.userId === 'string' &&
+            typeof user.userName === 'string' &&
+            (user.userImage === undefined || typeof user.userImage === 'string')
+          )
+        ))
+      );
     case 'rateLimit':
       return (
         typeof data.retryAfterMs === 'number' && data.retryAfterMs >= 0 &&

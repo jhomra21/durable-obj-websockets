@@ -43,6 +43,7 @@ export function Chat() {
     isConnecting: chat.isConnecting(),
     error: chat.connectionError() || (chat.messagesError() ? String(chat.messagesError()) : null),
     userCount: chat.userCount(),
+    connectedUsers: chat.connectedUsers(),
     sendCooldownUntil: chat.sendCooldownUntil(),
     // Loading states
     isLoadingMessages: chat.isLoadingMessages(),
@@ -73,7 +74,7 @@ export function Chat() {
 
       {/* Fade overlay above input */}
       <div class="relative">
-        <div class="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-transparent to-background pointer-events-none z-10 -translate-y-full"></div>
+        <div class="absolute top-0 left-0 h-6 bg-gradient-to-b from-transparent to-background pointer-events-none z-10 -translate-y-full right-3"></div>
       </div>
 
       <MessageInput

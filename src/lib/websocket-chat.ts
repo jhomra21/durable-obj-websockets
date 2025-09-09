@@ -3,6 +3,13 @@ import { createStore } from 'solid-js/store';
 import { isValidWebSocketMessage, sanitizeMessageContent } from './chat-validation';
 import type { ChatMessage } from '../../api/chat';
 
+// Connected user info
+export interface ConnectedUser {
+  userId: string;
+  userName: string;
+  userImage?: string;
+}
+
 // WebSocket connection state
 export interface WebSocketState {
   isConnected: boolean;
@@ -15,6 +22,7 @@ export interface WebSocketState {
   reconnectAttempts: number;
   messages: ChatMessage[];
   userCount: number;
+  connectedUsers: ConnectedUser[];
   connectionStatus: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
   // When set and in the future, sending is disabled until this epoch ms
   sendCooldownUntil?: number | null;
@@ -33,6 +41,7 @@ export function createWebSocketChat() {
     reconnectAttempts: 0,
     messages: [],
     userCount: 0,
+    connectedUsers: [],
     connectionStatus: 'idle'
   });
 
@@ -115,8 +124,11 @@ export function createWebSocketChat() {
             const sortedMessages = validMessages.sort((a: { timestamp: number; }, b: { timestamp: number; }) => a.timestamp - b.timestamp);
             setState('messages', sortedMessages);
           } else if (data.type === 'userCount' && typeof data.count === 'number') {
-            // Update user count
+            // Update user count and connected users
             setState('userCount', Math.max(0, data.count));
+            if (data.connectedUsers && Array.isArray(data.connectedUsers)) {
+              setState('connectedUsers', data.connectedUsers);
+            }
           }
         });
       } catch (error) {
