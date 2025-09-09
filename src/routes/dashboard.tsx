@@ -106,7 +106,7 @@ function DashboardPage() {
               </header>
               <div class="flex-grow px-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] relative min-h-0">
                 <Suspense fallback={
-                  <div class="w-full h-full flex items-center justify-center">
+                  <div class="w-full h-full flex items-center justify-center animate-in animate-out">
                     <p>Loading dashboard content...</p>
                   </div>
                 }>

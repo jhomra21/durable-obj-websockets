@@ -139,17 +139,13 @@ export class ChatService {
     const hasConnectedOnce = this.state.lastConnectedAt !== null;
     const canConnect = isLoggedIn && (isOnChatRoute || hasConnectedOnce);
 
-    wslog('[WS_CONNECT_GUARD] connect() attempt', {
-      path,
-      isOnChatRoute,
-      isLoggedIn,
-      hasConnectedOnce,
-      canConnect,
-      currentStatus: this.state.status,
-    });
-
     if (!canConnect) {
-      wswarn('[WS_CONNECT_GUARD] blocked connection attempt', { path, isOnChatRoute, isLoggedIn, hasConnectedOnce, canConnect });
+      // If user is not logged in, disconnect any existing connection
+      if (!isLoggedIn && this.connection) {
+        this.disconnect();
+        return;
+      }
+      
       // Ensure we are not stuck in connecting state
       this.updateState({
         isConnecting: false,
@@ -171,7 +167,6 @@ export class ChatService {
       // Create WebSocket connection
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/api/chat`;
-      wslog('[WS_CONNECT] creating WebSocket', { wsUrl });
 
       this.connection = new WebSocket(wsUrl);
 
@@ -316,12 +311,10 @@ export class ChatService {
 
       // Validate message structure
       if (!isValidWebSocketMessage(data)) {
-        wswarn('ChatService: Received invalid WebSocket message:', data);
         return;
       }
 
       if (!this.queryClient) {
-        console.error('ChatService: QueryClient not available for cache updates');
         return;
       }
 
@@ -377,7 +370,6 @@ export class ChatService {
    * Handle WebSocket close event
    */
   private handleClose(event: CloseEvent): void {
-    wslog('🔌 ChatService: WebSocket closed:', event.code, event.reason);
     
     this.stopHeartbeat();
     this.clearCooldownTimer();
@@ -413,7 +405,6 @@ export class ChatService {
 
       // Reconnect with exponential backoff
       const delay = Math.min(2000 * Math.pow(1.5, this.state.reconnectAttempts), 30000);
-      wslog(`ChatService: Reconnecting in ${delay}ms...`);
 
       this.reconnectTimeout = setTimeout(() => {
         if (!this.state.isConnected && !this.state.isConnecting) {
@@ -464,7 +455,7 @@ export class ChatService {
    * Handle WebSocket error event
    */
   private handleError(error: Event): void {
-    console.error('❌ ChatService: WebSocket error:', error);
+    console.error('[Chat] WebSocket error:', error);
     
     this.updateState({
       isConnecting: false,

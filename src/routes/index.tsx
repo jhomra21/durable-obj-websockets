@@ -17,10 +17,10 @@ const HomePage: Component = () => {
       <div class="max-w-5xl mx-auto w-full flex flex-col flex-grow">
         <section class="text-center pb-8">
           <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight">
-            Generative AI Agents
+            Real-time Chat
           </h1>
           <p class="mt-4 text-lg text-muted-foreground">
-            Create images, video, and audio — guided by an agentic chat. Build, remix, and manage your AI agents.
+            Experience blazing-fast real-time messaging powered by Cloudflare Durable Objects and WebSockets.
           </p>
           <div class="mt-8 flex flex-row flex-wrap gap-3 justify-center">
             <Show
@@ -32,8 +32,8 @@ const HomePage: Component = () => {
                     variant="sf-compute"
                     class="items-center justify-center gap-2 w-auto px-6 py-3"
                   >
-                    <span>Login  //  Sign Up</span>
-                    <span class="ml-2 opacity-70">🔑</span>
+                    <span>Join the Chat</span>
+                    <span class="ml-2 opacity-70">💬</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -47,20 +47,20 @@ const HomePage: Component = () => {
             >
               <>
                 <Button
-                  onClick={() => router.navigate({ to: "/dashboard" })}
+                  onClick={() => router.navigate({ to: "/dashboard/chat" })}
                   variant="sf-compute"
                   class="items-center justify-center gap-2 w-auto px-6 py-3"
                 >
-                  <span>Go to Dashboard</span>
-                  <span class="ml-2 opacity-70">🎨</span>
+                  <span>Open Chat</span>
+                  <span class="ml-2 opacity-70">💬</span>
                 </Button>
                 <Button
                   onClick={() => router.navigate({ to: "/dashboard" })}
                   variant="secondary"
                   class="items-center justify-center gap-2 w-auto px-6 py-3"
                 >
-                  <span>Go to Dashboard</span>
-                  <span class="ml-2 opacity-70">↗️</span>
+                  <span>Dashboard</span>
+                  <span class="ml-2 opacity-70">⚡</span>
                 </Button>
               </>
             </Show>
@@ -70,38 +70,38 @@ const HomePage: Component = () => {
         <section id="features" class="grid gap-6 sm:grid-cols-2">
           <Card>
             <CardHeader class="flex flex-row items-center gap-3">
-              <Icon name="image" class="size-6 text-primary" />
-              <CardTitle>Images</CardTitle>
+              <Icon name="zap" class="size-6 text-primary" />
+              <CardTitle>Real-time Messaging</CardTitle>
             </CardHeader>
             <CardContent>
-              <p>Generate, paint, and remix photos and artwork with prompt-driven tools.</p>
+              <p>Instant message delivery powered by WebSockets and Cloudflare Durable Objects for global scale.</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader class="flex flex-row items-center gap-3">
-              <Icon name="video" class="size-6 text-primary" />
-              <CardTitle>Video</CardTitle>
+              <Icon name="users" class="size-6 text-primary" />
+              <CardTitle>Multi-user Chat</CardTitle>
             </CardHeader>
             <CardContent>
-              <p>Bring ideas to motion. Create short clips and loops from text prompts.</p>
+              <p>Connect with multiple users simultaneously in a shared chat room with live user presence.</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader class="flex flex-row items-center gap-3">
-              <Icon name="music" class="size-6 text-primary" />
-              <CardTitle>Audio</CardTitle>
+              <Icon name="scroll-text" class="size-6 text-primary" />
+              <CardTitle>Message History</CardTitle>
             </CardHeader>
             <CardContent>
-              <p>Compose soundscapes, music, and voice with generative audio models.</p>
+              <p>Virtualized message list with smooth scrolling and automatic message persistence.</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader class="flex flex-row items-center gap-3">
-              <Icon name="bot" class="size-6 text-primary" />
-              <CardTitle>AI Chat Agent</CardTitle>
+              <Icon name="shield-check" class="size-6 text-primary" />
+              <CardTitle>Secure Authentication</CardTitle>
             </CardHeader>
             <CardContent>
-              <p>Use natural language to create other agents, generate or edit media.</p>
+              <p>OAuth sign-in with Google, GitHub, and Twitter using better-auth and Cloudflare D1.</p>
             </CardContent>
           </Card>
         </section>
@@ -111,22 +111,23 @@ const HomePage: Component = () => {
         <Card>
           <CardHeader>
             <CardTitle>
-              Quick Overview
+              Technical Architecture
             </CardTitle>
           </CardHeader>
           <CardContent>
-            This project showcases the following technologies:
-            <ul class="list-disc list-inside">
-              <li>Cloudflare D1, Workers, KV</li>
-              <li>SolidJS and Tanstack Router</li>
-              <li>Better Auth</li>
-              <li>Vite Plugin, Fullstack SPA in one Worker</li>
-              <li>Shadcn components converted to SolidJS [<a href="https://www.solid-ui.com/" class="text-blue-500">solid-ui</a>, <a href="https://shadcn-solid.com/" class="text-blue-500">shadcn-solid</a>]</li>
+            This real-time chat application demonstrates:
+            <ul class="list-disc list-inside space-y-1">
+              <li><strong>Cloudflare Durable Objects</strong> - WebSocket handling and message persistence</li>
+              <li><strong>SolidJS + TanStack Router/Query</strong> - Reactive UI with smart caching</li>
+              <li><strong>Better Auth</strong> - OAuth with D1 database and KV session storage</li>
+              <li><strong>Virtualized Messaging</strong> - Smooth scrolling for thousands of messages</li>
+              <li><strong>Hybrid Data Loading</strong> - HTTP + WebSocket for optimal performance</li>
+              <li><strong>Solid-UI Components</strong> - Modern design system for SolidJS</li>
             </ul>
           </CardContent>
           <CardFooter>
             <p class="text-sm text-muted-foreground">
-              This is a starter template for the Cloudflare Vite Plugin
+              Built with the Cloudflare Vite Plugin for seamless full-stack development
             </p>
           </CardFooter>
         </Card>

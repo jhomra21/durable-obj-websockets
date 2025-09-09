@@ -36,6 +36,7 @@ window.__QUERY_CLIENT = queryClient;
 
 // Initialize chat service with queryClient for global access
 import { initializeChatService } from './lib/chat-hooks';
+import { ChatService } from './lib/chat-service';
 initializeChatService(queryClient);
 
 // Create router with the generated routeTree and provide context
@@ -54,6 +55,23 @@ const router = createRouter({
   // context: { queryClient } satisfies RouterContext,
 })
 
+// Add navigation listener to disconnect chat when leaving dashboard
+router.subscribe('onBeforeLoad', ({ toLocation, fromLocation }) => {
+  const leavingDashboard = fromLocation?.pathname?.startsWith('/dashboard') && 
+                          !toLocation.pathname.startsWith('/dashboard');
+  
+  if (leavingDashboard) {
+    try {
+      const chatService = ChatService.getInstance();
+      if (chatService.getState().isConnected) {
+        chatService.disconnect();
+      }
+    } catch (error) {
+      // Silent fail on navigation cleanup
+    }
+  }
+});
+
 // Register the router instance for type safety
 declare module '@tanstack/solid-router' {
   interface Register {
@@ -67,6 +85,18 @@ declare global {
   }
 }
 function MainApp() {
+  // Add cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    try {
+      const chatService = ChatService.getInstance();
+      if (chatService.getState().isConnected) {
+        chatService.disconnect();
+      }
+    } catch (error) {
+      // Silent fail on unload
+    }
+  });
+
   return (
     <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />

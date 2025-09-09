@@ -15,7 +15,7 @@ app.use('/api/*', cors({
       'http://localhost:5173',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:3000',
-      'https://convex-workers-solid-tanstack-spa-betterauth-d1-kv.jhonra121.workers.dev', // Production domain
+      'https://durable-obj-websockets.jhonra121.workers.dev', // Production domain
     ];
     if (!origin || allowedOrigins.includes(origin)) {
       return origin || '*';
@@ -61,28 +61,15 @@ app.get('/api/chat', async (c) => {
   const user = c.get('user');
   const session = c.get('session');
 
-  // Log attempt with referer and auth state
-  try {
-    console.log('[WS_API] connection attempt', {
-      path: c.req.path,
-      referer: c.req.header('Referer') || null,
-      userId: user ? (user as any).id : null,
-      hasSession: !!session,
-    });
-  } catch {}
-
   if (!user || !session) {
-    console.warn('[WS_API] unauthorized connection attempt', {
-      path: c.req.path,
-      referer: c.req.header('Referer') || null,
-    });
+    console.warn('[WS] Unauthorized connection attempt');
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
   // Validate WebSocket upgrade request
   const upgradeHeader = c.req.header('Upgrade');
   if (upgradeHeader !== 'websocket') {
-    console.warn('[WS_API] invalid upgrade header', { upgradeHeader });
+    console.warn('[WS] Invalid upgrade header:', upgradeHeader);
     return c.json({ error: 'Expected websocket' }, 426);
   }
 
@@ -102,12 +89,7 @@ app.get('/api/chat', async (c) => {
   newRequest.headers.set('X-User-Image', user.image || '');
 
   // Forward the request to the Durable Object
-  try {
-    console.log('[WS_API] forwarding to Durable Object', {
-      room: 'global',
-      userId: user.id,
-    });
-  } catch {}
+  console.log('[WS] User connecting:', user.name || 'Anonymous');
   return chatRoom.fetch(newRequest);
 });
 

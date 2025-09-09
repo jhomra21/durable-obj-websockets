@@ -2,6 +2,7 @@ import { useQueryClient, useMutation } from '@tanstack/solid-query';
 import { useNavigate, useRouteContext } from '@tanstack/solid-router';
 import { createMemo } from 'solid-js';
 import { authClient } from './auth-client';
+import { ChatService } from './chat-service';
 
 type SignInCredentials = {
   email: string;
@@ -51,25 +52,25 @@ export function useSignUpMutation() {
 }
 
 export function useGoogleSignInMutation() {
-    return useMutation(() => ({
-        mutationFn: () => authClient.signIn.social({ provider: 'google' }),
-    }));
+  return useMutation(() => ({
+    mutationFn: () => authClient.signIn.social({ provider: 'google' }),
+  }));
 }
 
 export function useGithubSignInMutation() {
-    return useMutation(() => ({
-        mutationFn: () => authClient.signIn.social({ provider: 'github' }),
-    }));
+  return useMutation(() => ({
+    mutationFn: () => authClient.signIn.social({ provider: 'github' }),
+  }));
 }
 
 export function useTwitterSignInMutation() {
-    return useMutation(() => ({
-        mutationFn: () => authClient.signIn.social({ provider: 'twitter' }),
-    }));
+  return useMutation(() => ({
+    mutationFn: () => authClient.signIn.social({ provider: 'twitter' }),
+  }));
 }
 
-type UserUpdateVariables = { 
-  name: string; 
+type UserUpdateVariables = {
+  name: string;
   image: string | null | undefined;
 };
 
@@ -128,14 +129,28 @@ export function useDeleteUserMutation() {
 /**
  * A mutation hook that provides a centralized sign-out function.
  * It handles signing out the user via the auth client, clearing the
- * session from the TanStack Query cache, and navigating to the auth page.
+ * session from the TanStack Query cache, disconnecting from chat WebSocket,
+ * and navigating to the auth page.
  */
 export function useSignOutMutation() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   return useMutation(() => ({
-    mutationFn: () => authClient.signOut(),
+    mutationFn: async () => {
+      // First disconnect from chat WebSocket to ensure clean logout
+      try {
+        const chatService = ChatService.getInstance();
+        if (chatService.getState().isConnected) {
+          chatService.disconnect();
+        }
+      } catch (error) {
+        // Silent fail on logout cleanup
+      }
+
+      // Then sign out from auth
+      return authClient.signOut();
+    },
     onSuccess: () => {
       // Manually and synchronously update the cache to reflect the logged-out state.
       queryClient.setQueryData(['session'], null);
@@ -143,6 +158,7 @@ export function useSignOutMutation() {
       navigate({ to: '/' });
     },
     onError: (error: Error) => {
+      console.error('[Auth] Sign out failed:', error);
       // In a real app, you might use a more robust notification system.
       alert(`Sign out failed: ${error.message}`);
     },

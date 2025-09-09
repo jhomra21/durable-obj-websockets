@@ -5,7 +5,7 @@ export type IconName = "panelLeft" | "panelLeftClose" | "house" | "dumbbell" | "
   "logout" | "gear" | "user" | "login" | "stickynote" | "google" | 'image' | 'volume2' | 'mic' | 'micOff' | 'video' |
   "archive" | "archive-restore" | "clock" | "calendar" | "file-clock" | "file-plus" | "plus" | "file" | "square-check"
   | "edit" | "check" | "trash-2" | "loader" | "layout-grid" | "play" | "refresh-cw" | "mouse-pointer" | "triangle-alert" |
-  "circle-x" | "circle" | "check-circle" | "upload" | "share" | "copy" | "users" | "chevron-down" | "download" | "move" | "arrow-down" | "message-circle" | "bot" | "send" | "chevron-up" | "loader-2" | "link" | "paperclip" | "search" | "search-x" | "folder" | "file-code" | "braces" | "file-text" | "bug";
+  "circle-x" | "circle" | "check-circle" | "upload" | "share" | "copy" | "users" | "chevron-down" | "download" | "move" | "arrow-down" | "message-circle" | "bot" | "send" | "chevron-up" | "loader-2" | "link" | "paperclip" | "search" | "search-x" | "folder" | "file-code" | "braces" | "file-text" | "bug" | "zap" | "scroll-text" | "shield-check";
 
 // Define props for the Icon component
 // We want to accept any standard SVG element attributes
@@ -351,13 +351,7 @@ const CopyIcon = (props: ComponentProps<"svg">) => (
 );
 
 const UsersIcon = (props: ComponentProps<"svg">) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" {...props}>
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="m22 21-3.5-3.5" />
-    <path d="m17 17 5 5" />
-    <circle cx="20" cy="8" r="3" />
-  </svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" {...props} class="lucide lucide-users-icon lucide-users"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
 );
 
 const ChevronDownIcon = (props: ComponentProps<"svg">) => (
@@ -492,6 +486,28 @@ const BugIcon = (props: ComponentProps<"svg">) => (
     <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
     <path d="M22 13h-4" />
     <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
+  </svg>
+);
+
+const ZapIcon = (props: ComponentProps<"svg">) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap-icon lucide-zap" {...props}>
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>
+  </svg>
+);
+
+const ScrollTextIcon = (props: ComponentProps<"svg">) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-scroll-text-icon lucide-scroll-text" {...props}>
+    <path d="M15 12h-5"/>
+    <path d="M15 8h-5"/>
+    <path d="M19 17V5a2 2 0 0 0-2-2H4"/>
+    <path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>
+  </svg>
+);
+
+const ShieldCheckIcon = (props: ComponentProps<"svg">) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shield-check-icon lucide-shield-check" {...props}>
+    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+    <path d="m9 12 2 2 4-4"/>
   </svg>
 );
 
@@ -708,6 +724,15 @@ export const Icon = (props: IconProps) => {
       </Match>
       <Match when={local.name === "bug"}>
         <BugIcon width={defaultWidth} height={defaultHeight} class={defaultClass} {...others} />
+      </Match>
+      <Match when={local.name === "zap"}>
+        <ZapIcon width={defaultWidth} height={defaultHeight} class={defaultClass} {...others} />
+      </Match>
+      <Match when={local.name === "scroll-text"}>
+        <ScrollTextIcon width={defaultWidth} height={defaultHeight} class={defaultClass} {...others} />
+      </Match>
+      <Match when={local.name === "shield-check"}>
+        <ShieldCheckIcon width={defaultWidth} height={defaultHeight} class={defaultClass} {...others} />
       </Match>
     </Switch>
   );

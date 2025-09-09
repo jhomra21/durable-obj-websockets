@@ -131,14 +131,7 @@ export class ChatRoomDurableObject implements DurableObject {
       return new Response("Missing user info", { status: 401 });
     }
 
-    // Log accepted upgrade attempt with minimal PII
-    try {
-      console.log('[WS_DO] upgrade accepted', {
-        path: url.pathname,
-        hasUser: true,
-        userId: userId.substring(0, 6) + '…',
-      });
-    } catch {}
+    console.log('[DO] WebSocket upgrade accepted for:', userName);
 
     // Create WebSocket pair
     const webSocketPair = new WebSocketPair();
@@ -158,12 +151,7 @@ export class ChatRoomDurableObject implements DurableObject {
     };
 
     this.connections.set(connectionId, wsInfo);
-    try {
-      console.log('[WS_DO] client connected', {
-        connectionId: connectionId.substring(0, 8) + '…',
-        userId: userId.substring(0, 6) + '…',
-      });
-    } catch {}
+    console.log('[DO] User connected:', userName, `(${this.connections.size} total)`);
 
     // Track and broadcast connection count
     this.broadcastUserCount();
@@ -329,14 +317,9 @@ export class ChatRoomDurableObject implements DurableObject {
       this.broadcastUserCount();
 
       if (wsInfo) {
-        try {
-          console.log('[WS_DO] client disconnected', {
-            connectionId: connectionId.substring(0, 8) + '…',
-            code,
-            reason,
-            wasClean,
-          });
-        } catch {}
+        const disconnectReason = code === 1000 ? 'normal' : `code ${code}`;
+        console.log('[DO] User disconnected:', wsInfo.userName, `(${disconnectReason}, ${this.connections.size} remaining)`);
+        
         // Broadcast user left message
         this.broadcastMessage({
           id: crypto.randomUUID(),
