@@ -285,13 +285,6 @@ export class ChatRoomDurableObject implements DurableObject {
           await this.schedulePrune();
           // Broadcast to all connections
           this.broadcastMessage(chatMessage);
-        } else if (data.type === 'ping') {
-          // Respond to ping to keep connection alive
-          try {
-            ws.send(JSON.stringify({ type: 'pong' }));
-          } catch (error) {
-            console.error('Error sending pong:', error);
-          }
         }
       }
     } catch (error) {
@@ -428,7 +421,7 @@ export class ChatRoomDurableObject implements DurableObject {
 
     const payload = JSON.stringify({ 
       type: 'userCount', 
-      count: this.connections.size,
+      count: connectedUsers.size,
       connectedUsers: Array.from(connectedUsers.values())
     });
     

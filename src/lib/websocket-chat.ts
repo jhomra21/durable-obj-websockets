@@ -3,6 +3,15 @@ import { createStore } from 'solid-js/store';
 import { isValidWebSocketMessage, sanitizeMessageContent } from './chat-validation';
 import type { ChatMessage } from '../../api/chat';
 
+/**
+ * LEGACY NOTICE:
+ * This module implements a component-scoped WebSocket chat hook (createWebSocketChat).
+ * The app now uses the global ChatService (src/lib/chat-service.ts) integrated with TanStack Query
+ * for caching, optimistic updates, and route-aware lifecycle management.
+ * Keep this file for types/helpers (ConnectedUser, WebSocketState, formatMessageTime, getMessageAuthor),
+ * but prefer ChatService for all new code.
+ */
+
 // Connected user info
 export interface ConnectedUser {
   userId: string;
