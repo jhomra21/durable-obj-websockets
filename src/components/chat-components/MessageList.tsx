@@ -358,7 +358,7 @@ export function MessageList(props: MessageListProps) {
           >
             <div
               ref={initializeScrollArea}
-              class="overflow-y-auto h-full pb-0 relative scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300/50 hover:scrollbar-thumb-gray-400/70"
+              class="overflow-y-auto h-full pb-4 relative scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300/50 hover:scrollbar-thumb-gray-400/70"
               onScroll={(e) => {
                 if (import.meta.env.DEV && DEBUG_VIRTUALIZER) {
                   const items = virtualizer.getVirtualItems();
@@ -373,8 +373,6 @@ export function MessageList(props: MessageListProps) {
               }}
               data-chat-scroll-area
             >
-              {/* Fade-out gradient at bottom */}
-              <div class="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none z-10"></div>
               <Show
                 when={props.state.messages.length > 0}
                 fallback={

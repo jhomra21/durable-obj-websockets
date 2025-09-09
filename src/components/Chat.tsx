@@ -71,6 +71,11 @@ export function Chat() {
         virtualizer={setVirtualizer}
       />
 
+      {/* Fade overlay above input */}
+      <div class="relative">
+        <div class="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-transparent to-background pointer-events-none z-10 -translate-y-full"></div>
+      </div>
+
       <MessageInput
         state={compatibleState()}
         newMessage={newMessage}
