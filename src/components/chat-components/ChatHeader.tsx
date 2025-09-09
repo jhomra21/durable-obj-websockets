@@ -1,8 +1,6 @@
 import { Show, createMemo } from 'solid-js';
-import { Card, CardHeader, CardTitle } from '~/components/ui/card';
 import { Button } from '~/components/ui/button';
 import { Badge } from '~/components/ui/badge';
-import { ConnectionQualityBars } from './ConnectionQualityBars';
 import type { WebSocketState } from '~/lib/websocket-chat';
 
 interface ChatHeaderProps {
@@ -24,7 +22,7 @@ export function ChatHeader(props: ChatHeaderProps) {
       case 'disconnected':
         return { text: 'Disconnected', color: 'text-red-600', icon: '🔴' };
       case 'reconnecting':
-        return { text: `Reconnecting... (attempt ${props.state.reconnectAttempts})`, color: 'text-orange-600', icon: '🟠' };
+        return { text: `Reconnecting...`, color: 'text-orange-600', icon: '🟠' };
       case 'error':
         return { text: 'Connection error', color: 'text-red-600', icon: '❌' };
       default:
@@ -32,106 +30,58 @@ export function ChatHeader(props: ChatHeaderProps) {
     }
   });
 
-  const connectionQualityDetails = createMemo(() => {
-    switch (props.state.connectionQuality) {
-      case 'excellent':
-        return { text: 'Excellent', color: 'text-green-600', bars: 4 };
-      case 'good':
-        return { text: 'Good', color: 'text-yellow-600', bars: 3 };
-      case 'poor':
-        return { text: 'Poor', color: 'text-orange-600', bars: 2 };
-      case 'offline':
-        return { text: 'Offline', color: 'text-red-600', bars: 0 };
-      default:
-        return { text: 'Unknown', color: 'text-muted-foreground', bars: 0 };
-    }
-  });
-
   return (
-    <Card class="border-0 shadow-none">
-      <CardHeader class="!pb-3 !p-0">
-        <div class="space-y-3">
-          {/* Main Title and Status */}
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <CardTitle class="text-lg">Global Chat</CardTitle>
-              <div class="flex items-center gap-2">
-                <span class={`text-lg animate-pulse ${connectionStatusDetails().color}`}>
-                  {connectionStatusDetails().icon}
-                </span>
-                <span class={`text-sm font-medium ${connectionStatusDetails().color}`}>
-                  {connectionStatusDetails().text}
-                </span>
-              </div>
-            </div>
-            <div class="flex items-center gap-2">
-              <Show when={props.state.userCount > 0}>
-                <Badge variant="secondary" class="text-xs">
-                  👥 {props.state.userCount} online
-                </Badge>
-              </Show>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={props.state.isConnected ? props.disconnect : props.connect}
-                disabled={props.state.isConnecting || props.state.isReconnecting}
-                class={props.state.isReconnecting ? 'animate-pulse' : ''}
-              >
-                {props.state.isReconnecting ? '🔄 Reconnecting...' :
-                  props.state.isConnecting ? '⏳ Connecting...' :
-                    props.state.isConnected ? '🔌 Disconnect' : '🔗 Connect'}
-              </Button>
-            </div>
-          </div>
-
-          {/* Connection Details */}
-          <div class="flex items-center justify-between text-xs text-muted-foreground">
-            <div class="flex items-center gap-4">
-              <Show when={props.state.lastConnectedAt}>
-                <span>🕐 Connected {props.state.lastConnectedAt ? new Date(props.state.lastConnectedAt).toLocaleTimeString() : ''}</span>
-              </Show>
-              <Show when={props.state.lastDisconnectedAt && !props.state.isConnected}>
-                <span>⏰ Disconnected {props.state.lastDisconnectedAt ? new Date(props.state.lastDisconnectedAt).toLocaleTimeString() : ''}</span>
-              </Show>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs">Signal:</span>
-              <ConnectionQualityBars
-                bars={connectionQualityDetails().bars}
-                color={connectionQualityDetails().color}
-              />
-              <span class={`text-xs ${connectionQualityDetails().color}`}>
-                {connectionQualityDetails().text}
-              </span>
-            </div>
-          </div>
-
-          {/* Error Message */}
-          <Show when={props.state.error}>
-            <div class="bg-destructive/10 border border-destructive/20 rounded-md p-2 animate-in fade-in duration-300">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2 text-sm text-destructive">
-                  <span>⚠️</span>
-                  <span>{props.state.error}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={props.clearError}
-                  class="h-6 px-2 text-xs hover:bg-destructive/20"
-                >
-                  ✕
-                </Button>
-              </div>
-              <Show when={props.state.reconnectAttempts > 0}>
-                <div class="text-xs text-muted-foreground mt-1">
-                  Auto-reconnect enabled • Attempt {props.state.reconnectAttempts}
-                </div>
-              </Show>
-            </div>
-          </Show>
+    <div class="flex items-center justify-between p-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div class="flex items-center gap-3">
+        <h1 class="text-lg font-semibold">Global Chat</h1>
+        <div class="flex items-center gap-2">
+          <span class={`text-sm ${connectionStatusDetails().icon === '🟡' || connectionStatusDetails().icon === '🟠' ? 'animate-pulse' : ''} ${connectionStatusDetails().color}`}>
+            {connectionStatusDetails().icon}
+          </span>
+          <span class={`text-sm ${connectionStatusDetails().color}`}>
+            {connectionStatusDetails().text}
+          </span>
         </div>
-      </CardHeader>
-    </Card>
+      </div>
+      
+      <div class="flex items-center gap-3">
+        <Show when={props.state.userCount > 0}>
+          <Badge variant="secondary" class="text-xs">
+            👥 {props.state.userCount} online
+          </Badge>
+        </Show>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={props.state.isConnected ? props.disconnect : props.connect}
+          disabled={props.state.isConnecting || props.state.isReconnecting}
+          class={props.state.isReconnecting ? 'animate-pulse' : ''}
+        >
+          {props.state.isReconnecting ? 'Reconnecting...' :
+            props.state.isConnecting ? 'Connecting...' :
+              props.state.isConnected ? 'Disconnect' : 'Connect'}
+        </Button>
+      </div>
+
+      {/* Error Toast - positioned absolutely */}
+      <Show when={props.state.error}>
+        <div class="absolute top-16 left-4 right-4 bg-destructive/10 border border-destructive/20 rounded-md p-3 animate-in fade-in slide-in-from-top-2 duration-300 z-10">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 text-sm text-destructive">
+              <span>⚠️</span>
+              <span>{props.state.error}</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={props.clearError}
+              class="h-6 px-2 text-xs hover:bg-destructive/20"
+            >
+              ✕
+            </Button>
+          </div>
+        </div>
+      </Show>
+    </div>
   );
 }

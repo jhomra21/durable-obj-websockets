@@ -33,7 +33,15 @@ export function MessageList(props: MessageListProps) {
     count: props.state.messages.length,
     // Always return the latest scroll element
     getScrollElement: () => scrollEl() || null,
-    estimateSize: () => 40,
+    estimateSize: (index: number) => {
+      // Estimate size based on grouping - grouped messages are smaller
+      const groupInfo = messageGroupInfo()[index];
+      if (groupInfo?.isGrouped) {
+        if (groupInfo.isFirstInGroup) return 60; // First in group has header
+        return 30; // Subsequent grouped messages are smaller
+      }
+      return 50; // Non-grouped messages
+    },
     overscan: 15,
     // Seed an initial rect so range can compute before observers fire
     initialRect: {
@@ -109,7 +117,7 @@ export function MessageList(props: MessageListProps) {
             // Latest is visible; stop auto-scroll attempts
             pendingAutoScroll = false;
           }
-        } catch {}
+        } catch { }
       }
     },
   })) as any);
@@ -205,11 +213,47 @@ export function MessageList(props: MessageListProps) {
     requestAnimationFrame(() => {
       try {
         virtualizer.scrollToIndex(count - 1, { align: 'end' } as any);
-      } catch {}
+      } catch { }
     });
   });
 
   // (removed) hasScrollDimensions — replaced by containerReady signal
+
+  // Helper function to determine if messages should be grouped
+  const shouldGroupMessages = (currentMsg: any, prevMsg: any) => {
+    if (!currentMsg || !prevMsg) return false;
+
+    // Don't group system messages
+    if (currentMsg.type === 'system' || prevMsg.type === 'system') return false;
+
+    // Group if same user and within 5 minutes
+    const timeDiff = currentMsg.timestamp - prevMsg.timestamp;
+    const fiveMinutes = 5 * 60 * 1000;
+
+    return currentMsg.userId === prevMsg.userId && timeDiff < fiveMinutes;
+  };
+
+  // Memoized message grouping info
+  const messageGroupInfo = createMemo(() => {
+    const messages = props.state.messages;
+    return messages.map((message, index) => {
+      const prevMessage = index > 0 ? messages[index - 1] : null;
+      const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+
+      const isGroupedWithPrev = shouldGroupMessages(message, prevMessage);
+      const isGroupedWithNext = shouldGroupMessages(nextMessage, message);
+
+      const isGrouped = isGroupedWithPrev || isGroupedWithNext;
+      const isFirstInGroup = isGrouped && !isGroupedWithPrev;
+      const isLastInGroup = isGrouped && !isGroupedWithNext;
+
+      return {
+        isGrouped,
+        isFirstInGroup,
+        isLastInGroup,
+      };
+    });
+  });
 
   // Memoized virtual items for performance
   const virtualItems = createMemo(() => {
@@ -314,7 +358,7 @@ export function MessageList(props: MessageListProps) {
           >
             <div
               ref={initializeScrollArea}
-              class="overflow-y-auto h-full pb-4"
+              class="overflow-y-auto h-full pb-0 relative scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300/50 hover:scrollbar-thumb-gray-400/70"
               onScroll={(e) => {
                 if (import.meta.env.DEV && DEBUG_VIRTUALIZER) {
                   const items = virtualizer.getVirtualItems();
@@ -329,6 +373,8 @@ export function MessageList(props: MessageListProps) {
               }}
               data-chat-scroll-area
             >
+              {/* Fade-out gradient at bottom */}
+              <div class="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none z-10"></div>
               <Show
                 when={props.state.messages.length > 0}
                 fallback={
@@ -347,12 +393,16 @@ export function MessageList(props: MessageListProps) {
                     // Fallback: render messages without virtualization when container isn't ready
                     <div>
                       <For each={props.state.messages}>
-                        {(message) => {
+                        {(message, index) => {
                           const isLatestMessage = props.latestMessageId() === message?.id;
+                          const groupInfo = messageGroupInfo()[index()];
                           return (
-                            <MessageItem 
-                              message={message} 
+                            <MessageItem
+                              message={message}
                               isLatest={isLatestMessage}
+                              isGrouped={groupInfo?.isGrouped}
+                              isFirstInGroup={groupInfo?.isFirstInGroup}
+                              isLastInGroup={groupInfo?.isLastInGroup}
                             />
                           );
                         }}
@@ -372,7 +422,8 @@ export function MessageList(props: MessageListProps) {
                       {(virtualItem) => {
                         const message = props.state.messages[virtualItem.index];
                         const isLatestMessage = props.latestMessageId() === message?.id;
-                        
+                        const groupInfo = messageGroupInfo()[virtualItem.index];
+
                         return (
                           <div
                             ref={(el) => {
@@ -381,7 +432,7 @@ export function MessageList(props: MessageListProps) {
                               queueMicrotask(() => {
                                 try {
                                   virtualizer.measureElement(el);
-                                } catch {}
+                                } catch { }
                               });
                             }}
                             data-index={virtualItem.index}
@@ -394,9 +445,12 @@ export function MessageList(props: MessageListProps) {
                               transform: `translateY(${virtualItem.start}px)`,
                             } as any}
                           >
-                            <MessageItem 
-                              message={message} 
+                            <MessageItem
+                              message={message}
                               isLatest={isLatestMessage}
+                              isGrouped={groupInfo?.isGrouped}
+                              isFirstInGroup={groupInfo?.isFirstInGroup}
+                              isLastInGroup={groupInfo?.isLastInGroup}
                             />
                           </div>
                         );

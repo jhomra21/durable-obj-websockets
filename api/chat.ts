@@ -37,7 +37,7 @@ export class ChatRoomDurableObject implements DurableObject {
   private rateLimiter = new Map<string, { count: number; windowStart: number }>();
   private cooldownUntil = new Map<string, number>();
   private readonly RATE_WINDOW_MS = 10_000; // 10s window
-  private readonly RATE_MAX_MSGS = 20;      // max messages per window
+  private readonly RATE_MAX_MSGS = 10;      // max messages per window (reduced from 20)
   private readonly RESCHEDULE_IDLE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
   // Load messages from storage on startup
@@ -56,7 +56,7 @@ export class ChatRoomDurableObject implements DurableObject {
       const userName = request.headers.get("X-User-Name");
 
       if (!userId || !userName) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' }
         });
@@ -69,10 +69,10 @@ export class ChatRoomDurableObject implements DurableObject {
 
       // Return last 50 messages
       const recentMessages = this.messages.slice(-50);
-      
+
       return new Response(JSON.stringify(recentMessages), {
         status: 200,
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'private, max-age=0, must-revalidate'
         }
@@ -80,7 +80,7 @@ export class ChatRoomDurableObject implements DurableObject {
 
     } catch (error) {
       console.error('Error handling messages request:', error);
-      return new Response(JSON.stringify({ error: 'Internal server error' }), { 
+      return new Response(JSON.stringify({ error: 'Internal server error' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -110,7 +110,7 @@ export class ChatRoomDurableObject implements DurableObject {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    
+
     // NEW: HTTP endpoint for message history only
     if (url.pathname === '/messages') {
       return this.handleMessagesRequest(request);
@@ -250,7 +250,7 @@ export class ChatRoomDurableObject implements DurableObject {
             this.cooldownUntil.set(connectionId, now + retryAfterMs);
             try {
               ws.send(JSON.stringify({ type: 'rateLimit', retryAfterMs, limit: this.RATE_MAX_MSGS, windowMs: this.RATE_WINDOW_MS }));
-            } catch {}
+            } catch { }
             return;
           }
           // Basic server-side validation
@@ -259,7 +259,7 @@ export class ChatRoomDurableObject implements DurableObject {
           if (!content) return;
           const MAX = 2000;
           if (content.length > MAX) {
-            try { ws.close(1009, 'message too large'); } catch {}
+            try { ws.close(1009, 'message too large'); } catch { }
             return;
           }
           const chatMessage: ChatMessage = {
@@ -319,7 +319,7 @@ export class ChatRoomDurableObject implements DurableObject {
       if (wsInfo) {
         const disconnectReason = code === 1000 ? 'normal' : `code ${code}`;
         console.log('[DO] User disconnected:', wsInfo.userName, `(${disconnectReason}, ${this.connections.size} remaining)`);
-        
+
         // Broadcast user left message
         this.broadcastMessage({
           id: crypto.randomUUID(),
@@ -395,7 +395,7 @@ export class ChatRoomDurableObject implements DurableObject {
       if (lastTs && now - lastTs < this.RESCHEDULE_IDLE_WINDOW_MS) {
         await this.schedulePrune();
       }
-    } catch {}
+    } catch { }
   }
 
   private async pruneByPrefix(prefix: string, limit: number) {

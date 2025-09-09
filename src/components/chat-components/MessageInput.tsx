@@ -1,6 +1,4 @@
 import { Show, batch, createSignal, createEffect, onCleanup } from 'solid-js';
-
-import { Card, CardContent } from '~/components/ui/card';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import type { WebSocketState } from '~/lib/websocket-chat';
@@ -63,78 +61,57 @@ export function MessageInput(props: MessageInputProps) {
     }
   };
 
-  return (
-    <Card class="border-t-0 shadow-none flex-shrink-0">
-      <CardContent class="p-4">
-        <form onSubmit={handleSendMessage} class="space-y-3">
-          <div class="flex gap-2">
-            <div class="flex-1 relative">
-              <Input
-                value={props.newMessage()}
-                onChange={props.setNewMessage}
-                placeholder={
-                  cooldownActive() ? `⏳ Wait ${remainingSeconds()}s (rate limit)` :
-                  (!props.state.isConnected ? "🔌 Connect to start chatting..." :
-                    props.state.isReconnecting ? "🔄 Reconnecting..." :
-                      props.state.connectionQuality === 'poor' ? "📶 Signal weak - Type a message..." :
-                        "💬 Type a message...")
-                }
-                disabled={!props.state.isConnected || props.state.isConnecting || props.state.isReconnecting || cooldownActive()}
-                class={`flex-1 transition-all duration-200 chat-input ${
-                  props.state.connectionQuality === 'poor' ? 'border-orange-300 focus:border-orange-400' :
-                    props.state.connectionQuality === 'excellent' ? 'border-green-300 focus:border-green-400' :
-                      ''
-                }`}
-              />
-              <Show when={props.state.connectionQuality === 'poor' && props.state.isConnected}>
-                <div class="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <span class="text-xs text-orange-500 animate-pulse">📶</span>
-                </div>
-              </Show>
-            </div>
-            <Button
-              type="submit"
-              disabled={!props.state.isConnected || !props.newMessage().trim() || props.state.isConnecting || props.state.isReconnecting || cooldownActive()}
-              size="sm"
-              class={`transition-all duration-200 min-w-[70px] ${
-                props.state.isReconnecting ? 'animate-pulse bg-orange-500 hover:bg-orange-600' : cooldownActive() ? 'opacity-60 cursor-not-allowed' :
-                  !props.state.isConnected ? 'opacity-50' :
-                    props.state.connectionQuality === 'excellent' ? 'bg-green-600 hover:bg-green-700' :
-                      ''
-              }`}
-            >
-              <Show when={props.state.isReconnecting} fallback={
-                <Show when={cooldownActive()} fallback="📤 Send">
-                  <span>⏳ {remainingSeconds()}s</span>
-                </Show>
-              }>
-                <span class="animate-spin">🔄</span>
-              </Show>
-            </Button>
-          </div>
+  const getPlaceholder = () => {
+    if (cooldownActive()) return `Wait ${remainingSeconds()}s...`;
+    if (!props.state.isConnected) return "Connect to start chatting...";
+    if (props.state.isReconnecting) return "Reconnecting...";
+    return "Type a message...";
+  };
 
-          {/* Input Status */}
-          <div class="flex items-center justify-between text-xs text-muted-foreground">
-            <div class="flex items-center gap-4">
-              <Show when={props.newMessage().length > 0}>
-                <span>{props.newMessage().length} characters</span>
-              </Show>
-              <Show when={cooldownActive()}>
-                <span class="text-blue-600">⏳ Cooldown: {remainingSeconds()}s</span>
-              </Show>
-              <Show when={props.state.isConnected && props.state.connectionQuality === 'excellent'}>
-                <span class="text-green-600">✨ Strong connection</span>
-              </Show>
-              <Show when={props.state.isConnected && props.state.connectionQuality === 'poor'}>
-                <span class="text-orange-600">⚠️ Weak connection</span>
-              </Show>
-            </div>
-            <Show when={!props.state.isConnected && !props.state.isConnecting && !props.state.isReconnecting}>
-              <span>Click "Connect" to start chatting</span>
+  const isDisabled = () => !props.state.isConnected || props.state.isConnecting || props.state.isReconnecting || cooldownActive();
+
+  return (
+    <div class="px-4 pb-4 bg-background">
+      <div class="bg-card border rounded-lg shadow-sm p-3">
+        <form onSubmit={handleSendMessage} class="flex gap-3">
+          <div class="flex-1 relative">
+            <Input
+              value={props.newMessage()}
+              onChange={props.setNewMessage}
+              placeholder={getPlaceholder()}
+              disabled={isDisabled()}
+              class="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 pr-12"
+            />
+            <Show when={cooldownActive()}>
+              <div class="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <span class="text-xs text-muted-foreground">⏳ {remainingSeconds()}s</span>
+              </div>
             </Show>
           </div>
+          <Button
+            type="submit"
+            disabled={isDisabled() || !props.newMessage().trim()}
+            size="sm"
+            class="min-w-[70px]"
+          >
+            <Show when={props.state.isReconnecting} fallback={
+              <Show when={cooldownActive()} fallback="Send">
+                {remainingSeconds()}s
+              </Show>
+            }>
+              <span class="animate-spin">🔄</span>
+            </Show>
+          </Button>
         </form>
-      </CardContent>
-    </Card>
+        
+        {/* Minimal status indicator */}
+        <Show when={props.state.connectionQuality === 'poor' && props.state.isConnected}>
+          <div class="flex items-center gap-2 mt-2 text-xs text-orange-600">
+            <span class="animate-pulse">📶</span>
+            <span>Weak connection</span>
+          </div>
+        </Show>
+      </div>
+    </div>
   );
 }
